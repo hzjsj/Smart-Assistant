@@ -7,3 +7,5 @@ pydantic==2.10.4
 python-dotenv>=1.0.0
 bcrypt>=4.0.0
 python-multipart>=0.0.9
+langchain>=1.0
+langchain-openai>=1.0

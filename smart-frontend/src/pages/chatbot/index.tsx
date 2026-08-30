@@ -5,9 +5,10 @@ import type {
   BubbleItemType,
   BubbleListProps,
 } from '@ant-design/x/es/bubble/interface';
-import XMarkdown from '@ant-design/x-markdown';
+import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
+import Latex from '@ant-design/x-markdown/plugins/Latex';
 import { useXChat } from '@ant-design/x-sdk';
-import { Avatar, Card } from 'antd';
+import { Avatar, Card, Select, Space, Switch, Tooltip, message } from 'antd';
 import React, {
   useCallback,
   useEffect,
@@ -16,11 +17,22 @@ import React, {
   useState,
 } from 'react';
 
-import type { ConversationItem, ParsedMessage } from './data';
+import {
+  createChatSession,
+  deleteChatSession,
+  listChatMessages,
+  listChatModels,
+  listChatSessions,
+} from './api';
+import type {
+  ChatModelItem,
+  ConversationItem,
+  ParsedMessage,
+} from './data';
 import { createChatProvider } from './service';
 import { useStyles } from './style';
 
-const WELCOME_TEXT = '🤖 你好，有什么可以帮你？';
+const WELCOME_TEXT = '🤖 你好，我是智能助手，有什么可以帮你？';
 
 const TypewriterTitle: React.FC = () => {
   const { styles } = useStyles();
@@ -48,31 +60,29 @@ const TypewriterTitle: React.FC = () => {
   );
 };
 
-const parser = (message: { content: string; role: string }): ParsedMessage => {
-  const { content, role } = message;
-  if (role !== 'assistant') return { role: 'user', content };
+/** 思考组件：XMarkdown 把 <think> 标签渲染为此组件，流状态驱动标题 */
+const ThinkComponent = React.memo((props: ComponentProps) => {
+  const [title, setTitle] = React.useState('深度思考中...');
+  const [loading, setLoading] = React.useState(true);
 
-  const trimmed = content.trimStart();
+  React.useEffect(() => {
+    // 当流状态完成时，更新标题和加载状态
+    if (props.streamStatus === 'done') {
+      setTitle('思考完成');
+      setLoading(false);
+    }
+  }, [props.streamStatus]);
 
-  const fullMatch = trimmed.match(/^<think>([\s\S]*?)<\/think>([\s\S]*)$/);
-  if (fullMatch) {
-    return {
-      role: 'assistant',
-      thinkContent: fullMatch[1],
-      content: fullMatch[2].trimStart(),
-    };
-  }
-
-  const partialMatch = trimmed.match(/^<think>([\s\S]*)$/);
-  if (partialMatch) {
-    return { role: 'assistant', thinkContent: partialMatch[1], content: '' };
-  }
-
-  return { role: 'assistant', content };
-};
+  return (
+    <Think title={title} loading={loading} defaultExpanded={props.streamStatus !== 'done'}>
+      {props.children}
+    </Think>
+  );
+});
 
 const STREAMING_ACTIVE = { hasNextChunk: true, enableAnimation: true };
 const STREAMING_IDLE = { hasNextChunk: false, enableAnimation: true };
+const MARKDOWN_EXTENSIONS = Latex();
 
 const roleConfig: BubbleListProps['role'] = {
   user: {
@@ -94,7 +104,6 @@ const roleConfig: BubbleListProps['role'] = {
         🤖
       </Avatar>
     ),
-    typing: { effect: 'typing', step: 2, interval: 20 },
     contentRender: (
       content: string,
       info: { status?: string; loading?: boolean },
@@ -105,77 +114,136 @@ const roleConfig: BubbleListProps['role'] = {
           streaming={
             info?.status === 'updating' ? STREAMING_ACTIVE : STREAMING_IDLE
           }
-        >
-          {content}
-        </XMarkdown>
+          config={{ extensions: MARKDOWN_EXTENSIONS }}
+          paragraphTag="div"
+          content={content}
+          components={{
+            think: ThinkComponent,
+          }}
+        />
       );
     },
   },
 };
 
+const formatContext = (tokens: number) =>
+  tokens >= 1024 ? `${Math.round(tokens / 1024)}K` : `${tokens}`;
+
+/** 会话ID 用 UUID（后端 chat_id 要求 8-64 字符） */
+const newChatId = () =>
+  typeof crypto !== 'undefined' && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `chat-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+const newDraft = (): ConversationItem => ({
+  key: newChatId(),
+  label: '💬 新对话',
+  group: '今天',
+  isDraft: true,
+});
+
 const ChatbotPage: React.FC = () => {
   const { styles } = useStyles();
-  const idCounter = useRef(0);
-  const generateId = useCallback(() => `conv-${++idCounter.current}`, []);
+  const [messageApi, contextHolder] = message.useMessage();
 
+  // 初始草稿会话：conversations 与 activeKey 必须共用同一个 key
+  const [initialDraft] = useState<ConversationItem>(newDraft);
   const [conversations, setConversations] = useState<ConversationItem[]>([
-    { key: 'default', label: '💬 新对话', group: '今天', isDraft: true },
-    {
-      key: 'preset-1',
-      label: '🧩 Ant Design 的 Form 表单如何做联动校验？',
-      group: '今天',
-    },
-    {
-      key: 'preset-2',
-      label: '📋 ProTable 如何自定义工具栏按钮？',
-      group: '今天',
-    },
-    {
-      key: 'preset-3',
-      label: '🎨 如何用 antd-style 实现暗色主题切换？',
-      group: '昨天',
-    },
-    {
-      key: 'preset-4',
-      label: '🗂️ ProLayout 侧边菜单如何动态生成？',
-      group: '昨天',
-    },
-    {
-      key: 'preset-5',
-      label: '📊 Ant Design Charts 折线图数据格式',
-      group: '昨天',
-    },
-    {
-      key: 'preset-6',
-      label: '🚀 Ant Design Pro 如何接入后端权限系统？',
-      group: '更早',
-    },
-    {
-      key: 'preset-7',
-      label: '🔍 ProForm 中 Select 远程搜索怎么实现？',
-      group: '更早',
-    },
-    {
-      key: 'preset-8',
-      label: '⚙️ Ant Design Token 定制主题最佳实践',
-      group: '更早',
-    },
+    initialDraft,
   ]);
-  const [activeKey, setActiveKey] = useState<string>('default');
+  const [activeKey, setActiveKey] = useState<string>(initialDraft.key);
   const [inputValue, setInputValue] = useState('');
 
+  const [models, setModels] = useState<ChatModelItem[]>([]);
+  const [selectedModel, setSelectedModel] = useState<string>('');
+  const [enableThinking, setEnableThinking] = useState(false);
+
   const provider = useMemo(() => createChatProvider() as any, []);
+  // 切换会话时由 useXChat 按 conversationKey 调用，拉取后端历史恢复气泡
+  const loadDefaultMessages = useCallback(
+    async (info: { conversationKey?: string }) => {
+      const chatId = info?.conversationKey;
+      if (!chatId) return [];
+      try {
+        const res = await listChatMessages(chatId);
+        return (res?.data ?? []).map((record) => ({
+          id: record.id,
+          status: 'success' as const,
+          // 思考内容拼回 <think> 标签，由 XMarkdown 的 think 自定义组件渲染
+          message: {
+            role: record.role,
+            content: record.reasoningContent
+              ? `<think>\n\n${record.reasoningContent}\n\n</think>\n\n${record.content}`
+              : record.content,
+          },
+        }));
+      } catch {
+        return [];
+      }
+    },
+    [],
+  );
   const { onRequest, abort, isRequesting, parsedMessages } = useXChat<
     any,
     ParsedMessage
   >({
     provider,
     conversationKey: activeKey,
-    parser,
+    // <think> 标签不在此拆分，交给 XMarkdown 的 think 自定义组件渲染
     requestPlaceholder: { role: 'assistant', content: '' },
+    defaultMessages: loadDefaultMessages as any,
   });
 
+  const currentModel = useMemo(
+    () => models.find((m) => m.name === selectedModel),
+    [models, selectedModel],
+  );
+
+  const refreshSessions = useCallback(async () => {
+    try {
+      const res = await listChatSessions();
+      if (res?.success) {
+        // 后端列表置顶放本地草稿（未发出首条消息的会话不落库）
+        setConversations((prev) => {
+          const drafts = prev.filter((c) => c.isDraft);
+          return [...drafts, ...(res.data ?? [])];
+        });
+      }
+    } catch {
+      // 会话列表拉取失败不阻断聊天
+    }
+  }, []);
+
+  // 初始化：拉模型列表 + 会话列表
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await listChatModels();
+        if (res?.success) {
+          setModels(res.data ?? []);
+          const def = (res.data ?? []).find(
+            (m) => m.name === (res as any).default,
+          );
+          setSelectedModel((res as any).default ?? def?.name ?? (res.data?.[0]?.name ?? ''));
+        }
+      } catch {
+        // 模型列表失败时选择器置空
+      }
+      await refreshSessions();
+    })();
+  }, [refreshSessions]);
+
+  const newChat = () => {
+    const draft = newDraft();
+    setConversations((prev) => [draft, ...prev]);
+    setActiveKey(draft.key);
+  };
+
   const sendMessage = (content: string) => {
+    if (!selectedModel) {
+      messageApi.warning('模型列表加载中，请稍候');
+      return;
+    }
     setInputValue('');
     setConversations((prev) =>
       prev.map((c) =>
@@ -184,16 +252,42 @@ const ChatbotPage: React.FC = () => {
           : c,
       ),
     );
-    onRequest({ messages: [{ role: 'user', content }] });
+    onRequest({
+      messages: [{ role: 'user', content }],
+      chatId: activeKey,
+      model: selectedModel,
+      enableThinking,
+    });
   };
 
-  const newChat = () => {
-    const key = generateId();
-    setConversations((prev) => [
-      { key, label: '新对话', group: '今天', isDraft: true },
-      ...prev,
-    ]);
-    setActiveKey(key);
+  // 请求结束后刷新会话列表（新会话已在后端自动建档）
+  const wasRequesting = useRef(false);
+  useEffect(() => {
+    if (wasRequesting.current && !isRequesting) {
+      refreshSessions();
+    }
+    wasRequesting.current = isRequesting;
+  }, [isRequesting, refreshSessions]);
+
+  const handleDeleteConversation = (chatKey: string) => {
+    const conv = conversations.find((c) => c.key === chatKey);
+    setConversations((prev) => {
+      const next = prev.filter((c) => c.key !== chatKey);
+      if (next.length === 0) {
+        const draft = newDraft();
+        next.push(draft);
+        setActiveKey(draft.key);
+      } else if (activeKey === chatKey) {
+        setActiveKey(next[0]?.key ?? '');
+      }
+      return next;
+    });
+    // 草稿会话后端无记录，无需删除
+    if (!conv?.isDraft) {
+      deleteChatSession(chatKey).catch(() => {
+        messageApi.error('删除会话失败');
+      });
+    }
   };
 
   const bubbleItems = useMemo<BubbleItemType[]>(
@@ -201,8 +295,6 @@ const ChatbotPage: React.FC = () => {
       parsedMessages.map((msg) => {
         const parsed = msg.message as ParsedMessage;
         const isAI = parsed.role === 'assistant';
-        const thinkContent =
-          parsed.role === 'assistant' ? parsed.thinkContent : undefined;
 
         const item: BubbleItemType = {
           key: msg.id,
@@ -212,16 +304,30 @@ const ChatbotPage: React.FC = () => {
           status: msg.status,
         };
 
-        if (isAI && thinkContent) {
-          item.header = <Think>{thinkContent}</Think>;
-        }
-
         return item;
       }),
     [parsedMessages],
   );
 
   const hasMessages = parsedMessages.length > 0;
+
+  // 模型选择器（按平台分组）
+  const modelOptions = useMemo(() => {
+    const groups = new Map<string, ChatModelItem[]>();
+    models.forEach((m) => {
+      const list = groups.get(m.providerLabel) ?? [];
+      list.push(m);
+      groups.set(m.providerLabel, list);
+    });
+    return [...groups.entries()].map(([label, list]) => ({
+      label,
+      title: label,
+      options: list.map((m) => ({
+        value: m.name,
+        label: `${m.name}（${formatContext(m.contextTokens)}）`,
+      })),
+    }));
+  }, [models]);
 
   return (
     <PageContainer
@@ -234,6 +340,7 @@ const ChatbotPage: React.FC = () => {
         overflow: 'hidden',
       }}
     >
+      {contextHolder}
       <Card
         variant="borderless"
         style={{
@@ -264,24 +371,7 @@ const ChatbotPage: React.FC = () => {
                   items: [{ key: 'delete', label: '删除', danger: true }],
                   onClick: ({ key }) => {
                     if (key === 'delete') {
-                      setConversations((prev) => {
-                        const next = prev.filter(
-                          (c) => c.key !== conversation.key,
-                        );
-                        if (next.length === 0) {
-                          const key = generateId();
-                          next.push({
-                            key,
-                            label: '💬 新对话',
-                            group: '今天',
-                            isDraft: true,
-                          });
-                          setActiveKey(key);
-                        } else if (activeKey === conversation.key) {
-                          setActiveKey(next[0]?.key ?? '');
-                        }
-                        return next;
-                      });
+                      handleDeleteConversation(conversation.key);
                     }
                   },
                 })}
@@ -319,6 +409,34 @@ const ChatbotPage: React.FC = () => {
                   autoSize={{ minRows: 4, maxRows: 8 }}
                   style={{ maxWidth: 940, width: '100%' }}
                   styles={{ input: { paddingBlock: 0 } }}
+                  prefix={
+                    <Space.Compact>
+                      <Select
+                        value={selectedModel || undefined}
+                        onChange={(v) => {
+                          setSelectedModel(v);
+                          const meta = models.find((m) => m.name === v);
+                          if (!meta?.supportsThinking) setEnableThinking(false);
+                        }}
+                        options={modelOptions}
+                        loading={models.length === 0}
+                        style={{ minWidth: 240 }}
+                        size="middle"
+                        variant="borderless"
+                        placeholder="选择模型"
+                      />
+                      {currentModel?.supportsThinking && (
+                        <Tooltip title="深度思考">
+                          <Switch
+                            checked={enableThinking}
+                            onChange={setEnableThinking}
+                            checkedChildren="思考"
+                            unCheckedChildren="思考"
+                          />
+                        </Tooltip>
+                      )}
+                    </Space.Compact>
+                  }
                 />
               </div>
             </div>

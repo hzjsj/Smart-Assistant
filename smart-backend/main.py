@@ -10,7 +10,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
 from users.models import User, UserSession
+from chat.models import ChatSession, ChatMessage
 from users.router import router as users_router
+from chat.router import router as chat_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -33,3 +35,4 @@ app.add_middleware(
 )
 
 app.include_router(users_router)
+app.include_router(chat_router)

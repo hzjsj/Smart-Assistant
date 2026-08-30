@@ -41,6 +41,12 @@ export default [
     component: './user-list',
   },
   {
+    name: 'AI 助手',
+    icon: 'comment',
+    path: '/chatbot',
+    component: './chatbot',
+  },
+  {
     name: '查询表格',
     icon: 'table',
     path: '/list',

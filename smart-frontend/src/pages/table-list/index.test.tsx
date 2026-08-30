@@ -141,8 +141,8 @@ describe('TableList', () => {
       </QueryClientProvider>,
     );
 
-    expect(screen.getByText('Rule name')).toBeInTheDocument();
-    expect(screen.getByText('Description')).toBeInTheDocument();
+    expect(screen.getByText('规则名称')).toBeInTheDocument();
+    expect(screen.getByText('描述')).toBeInTheDocument();
   });
 
   it('should render table after data loading', async () => {

@@ -204,7 +204,7 @@ describe('requestErrorConfig', () => {
         errorHandler(error, {});
 
         expect(message.error).toHaveBeenCalledWith(
-          'Network unavailable. Please check your connection and try again.',
+          '网络不可用，请检查网络连接后重试。',
         );
       } finally {
         Object.defineProperty(navigator, 'onLine', {
