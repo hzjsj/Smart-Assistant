@@ -1,5 +1,10 @@
 export default [
   {
+    path: '/chat',
+    layout: false,
+    component: './chat',
+  },
+  {
     path: '/user',
     layout: false,
     routes: [
