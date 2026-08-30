@@ -72,7 +72,16 @@ export const errorConfig: RequestConfig = {
       } else if (error.response) {
         // Axios 的错误
         // 请求成功发出且服务器也响应了状态码，但状态代码超出了 2xx 的范围
-        message.error(`Response status:${error.response.status}`);
+        if (error.response.status === 401) {
+          // 会话过期/未登录：提示后跳转登录页，登录后回到当前页
+          message.error('登录已过期，请重新登录');
+          const { pathname, search, hash } = window.location;
+          if (pathname !== '/user/login') {
+            window.location.href = `/user/login?redirect=${encodeURIComponent(pathname + search + hash)}`;
+          }
+        } else {
+          message.error(`Response status:${error.response.status}`);
+        }
       } else if (typeof navigator !== 'undefined' && !navigator.onLine) {
         message.error(
           '网络不可用，请检查网络连接后重试。',

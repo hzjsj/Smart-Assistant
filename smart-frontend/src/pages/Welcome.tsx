@@ -3,7 +3,7 @@ import XMarkdown from '@ant-design/x-markdown';
 import '@ant-design/x-markdown/es/XMarkdown/index.css';
 import enUS from '@root/docs/cheatsheet.en-US.md';
 import zhCN from '@root/docs/cheatsheet.zh-CN.md';
-import { useIntl, useModel } from '@umijs/max';
+import { useModel } from '@umijs/max';
 import { Card } from 'antd';
 import hljs from 'highlight.js';
 import React from 'react';
@@ -140,7 +140,6 @@ const infoCards = [
 ] as const;
 
 const Welcome: React.FC = () => {
-  const intl = useIntl();
   const locale = 'zh-CN';
   const normalizedLocale = locale.toLowerCase();
   const content =
@@ -155,19 +154,10 @@ const Welcome: React.FC = () => {
     <PageContainer
       title={
         <>
-          {intl.formatMessage(
-            {
-              id: 'pages.welcome.celebrationTitle',
-              defaultMessage: '欢迎使用 Ant Design Pro {v6}',
-            },
-            {
-              v6: (
-                <span key="v6" className="welcome-gradient-title">
-                  V6
-                </span>
-              ),
-            },
-          )}
+          欢迎使用 Ant Design Pro{' '}
+          <span key="v6" className="welcome-gradient-title">
+            V6
+          </span>{' '}
           🎉
         </>
       }
@@ -189,14 +179,8 @@ const Welcome: React.FC = () => {
               key={card.href}
               index={card.index}
               href={card.href}
-              title={intl.formatMessage({
-                id: card.titleId,
-                defaultMessage: card.titleDefault,
-              })}
-              desc={intl.formatMessage({
-                id: card.descId,
-                defaultMessage: card.descDefault,
-              })}
+              title={card.titleDefault}
+              desc={card.descDefault}
             />
           ))}
         </div>

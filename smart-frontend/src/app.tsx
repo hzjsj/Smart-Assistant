@@ -101,7 +101,7 @@ export const layout: RunTimeLayoutConfig = ({
     },
     avatarProps: {
       src: initialState?.currentUser?.avatar,
-      title: 'ProUser',
+      title: initialState?.currentUser?.name || 'ProUser',
       render: (_, avatarChildren) => (
         <AvatarDropdown>{avatarChildren}</AvatarDropdown>
       ),
@@ -190,7 +190,10 @@ export const layout: RunTimeLayoutConfig = ({
  * @doc https://umijs.org/docs/max/request#配置
  */
 export const request: RequestConfig = {
-  baseURL: isDev ? '' : 'https://pro-api.ant-design-demo.workers.dev',
+  // 开发走 dev 代理（config/proxy.ts -> http://localhost:5000），生产同源部署
+  baseURL: isDev ? '' : '/',
+  // 登录态由后端 Cookie（mock_token）承载，跨端口开发代理下必须携带凭据
+  withCredentials: true,
   ...errorConfig,
 };
 
