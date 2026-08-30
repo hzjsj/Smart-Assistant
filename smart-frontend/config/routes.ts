@@ -5,6 +5,23 @@ export default [
     component: './chat',
   },
   {
+    path: '/copilot/:id',
+    layout: false,
+    component: './copilot',
+  },
+  {
+    name: '文档管理',
+    icon: 'fileText',
+    path: '/document-list',
+    component: './document-list',
+  },
+  {
+    name: 'AI 出卷',
+    icon: 'form',
+    path: '/generate-test-paper',
+    component: './generate-test-paper',
+  },
+  {
     path: '/user',
     layout: false,
     routes: [

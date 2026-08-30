@@ -108,3 +108,16 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def get_sync_db():
+    """供线程池 / 后台任务使用的同步 Session。
+
+    返回的 Session 由调用方负责 ``close()``；严禁直接 ``SessionLocal()``。
+    """
+    db = SessionLocal()
+    try:
+        return db
+    except Exception:
+        db.close()
+        raise

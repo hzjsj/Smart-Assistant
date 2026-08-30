@@ -3,12 +3,16 @@ import type { Settings as LayoutSettings } from '@ant-design/pro-components';
 import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
 import { history, Link } from '@umijs/max';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
 
 // Initialize dayjs plugins globally
 dayjs.extend(relativeTime);
+
+// document-list 等页面使用 @tanstack/react-query
+const queryClient = new QueryClient();
 
 import {
   AvatarDropdown,
@@ -199,9 +203,9 @@ export const request: RequestConfig = {
 
 export function rootContainer(container: React.ReactNode) {
   return (
-    <>
+    <QueryClientProvider client={queryClient}>
       <OfflineBanner />
       <ErrorBoundary>{container}</ErrorBoundary>
-    </>
+    </QueryClientProvider>
   );
 }

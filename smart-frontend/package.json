@@ -39,14 +39,18 @@
     "@ant-design/x-markdown": "^2.9.0",
     "@ant-design/x-sdk": "^2.9.0",
     "@tanstack/react-query": "^5.101.2",
+    "@types/react-katex": "^3.0.4",
     "antd": "^6.6.0",
     "antd-style": "^4.1.0",
     "china-division": "^2.7.0",
     "clsx": "^2.1.1",
     "dayjs": "^1.11.21",
     "highlight.js": "^11.11.1",
+    "html2pdf.js": "^0.14.0",
+    "katex": "^0.18.4",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "react-katex": "^3.1.0"
   },
   "devDependencies": {
     "@ant-design/cli": "^6.6.0",

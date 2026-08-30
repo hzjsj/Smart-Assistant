@@ -31,7 +31,7 @@ class ChatMessagesResponse(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     """POST /api/chat/completions 请求体（x-sdk 会发完整 messages，后端只取最后一条 user）"""
-    chat_id: str = Field(min_length=8, max_length=64, alias="chatId")
+    chat_id: str = Field(min_length=1, max_length=64, alias="chatId")
     model: str = Field(min_length=1)
     messages: list[dict] = Field(description="OpenAI 格式消息数组，取最后一条 user")
     enable_thinking: bool = Field(default=False, alias="enableThinking")
@@ -39,6 +39,11 @@ class ChatCompletionRequest(BaseModel):
         default=False,
         alias="regenerate",
         description="重新生成：先删除该会话最后一条 assistant 消息（不新增 user 消息）",
+    )
+    md_urls: list[str] = Field(
+        default=[],
+        alias="mdUrls",
+        description="参考文档 Markdown 的 URL 列表（如 OSS 地址），内容会注入对话上下文",
     )
 
     model_config = {"populate_by_name": True}

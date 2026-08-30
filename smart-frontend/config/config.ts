@@ -187,11 +187,17 @@ export default defineConfig({
    * @doc https://pro.ant.design/zh-cn/docs/openapi/
    */
   openAPI: [
+    // 注：services/ant-design-pro/ 为模板自带（手工维护），勿用 oneapi.json 重新生成覆盖
+    // {
+    //   requestLibPath: "import { request } from '@umijs/max'",
+    //   schemaPath: join(__dirname, 'oneapi.json'),
+    //   mock: false,
+    // },
     {
+      // smart-backend FastAPI 的 OpenAPI 规范（npm run openapi 生成 src/services/fast-api-manage/）
       requestLibPath: "import { request } from '@umijs/max'",
-      // 或者使用在线的版本
-      // schemaPath: "https://gw.alipayobjects.com/os/antfincdn/M%24jrzTTYJN/oneapi.json"
-      schemaPath: join(__dirname, 'oneapi.json'),
+      schemaPath: 'http://localhost:5000/openapi.json',
+      projectName: 'fast-api-manage',
       mock: false,
     },
   ],

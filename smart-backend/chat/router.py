@@ -139,6 +139,46 @@ def _extract_last_user_content(messages: list[dict]) -> str:
     raise HTTPException(status_code=400, detail="缺少用户消息")
 
 
+async def _fetch_md_contents(md_urls: list[str]) -> list[tuple[str, str]]:
+    """并发拉取参考文档 Markdown，返回 [(文件名, 内容)]；单个失败跳过。"""
+    import httpx
+
+    from utils.url_guard import validate_public_url
+
+    results: list[tuple[str, str]] = []
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        for url in md_urls:
+            try:
+                validate_public_url(url)
+                res = await client.get(url)
+                res.raise_for_status()
+                filename = url.split("?")[0].rstrip("/").split("/")[-1] or "document.md"
+                results.append((filename, res.text))
+            except Exception as e:  # noqa: BLE001
+                print(f"[chat] 拉取参考文档失败 {url}: {e}")
+    return results
+
+
+def _inject_md_context(msgs: list, md_docs: list[tuple[str, str]]) -> list:
+    """把参考文档内容拼到最后一条 user 消息之前（copilot 文档问答场景）。"""
+    if not md_docs:
+        return msgs
+    doc_block = "\n\n".join(
+        f"【参考文档：{name}】\n{content}" for name, content in md_docs
+    )
+    injected = list(msgs)
+    for i in range(len(injected) - 1, -1, -1):
+        if isinstance(injected[i], HumanMessage):
+            injected[i] = HumanMessage(
+                content=(
+                    f"请基于以下参考文档回答我的问题。\n\n{doc_block}\n\n"
+                    f"我的问题是：{injected[i].content}"
+                )
+            )
+            break
+    return injected
+
+
 @router.post("/completions")
 async def chat_completions(
     body: ChatCompletionRequest,
@@ -170,6 +210,10 @@ async def chat_completions(
         HumanMessage(content=m["content"]) if m["role"] == "user" else AIMessage(content=m["content"])
         for m in crud.build_context(db, body.chat_id, get_context_tokens(body.model))
     ]
+    # copilot 文档问答：拉取参考文档内容注入最后一条 user 消息
+    if body.md_urls:
+        md_docs = await _fetch_md_contents(body.md_urls)
+        langchain_msgs = _inject_md_context(langchain_msgs, md_docs)
     chat_model = get_chat_model(body.model, body.enable_thinking)
     chat_id = body.chat_id
 
