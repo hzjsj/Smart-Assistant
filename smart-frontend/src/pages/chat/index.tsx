@@ -506,6 +506,23 @@ const ChatPage: React.FC = () => {
   );
 
   // ==================== 节点 ====================
+  // 重新生成：带上会话/模型参数与 regenerate 标记，后端会移除上一条 AI 回复后重新作答
+  const handleReload = useCallback(
+    (id: string | number) => {
+      onReload?.(
+        id,
+        {
+          userAction: 'retry',
+          chatId: activeConversationKey,
+          model: selectedModel,
+          enableThinking,
+          regenerate: true,
+        } as any,
+      );
+    },
+    [onReload, activeConversationKey, selectedModel, enableThinking],
+  );
+
   // 模型选择菜单（按平台分组；菜单项显示全名+上下文，按钮上显示缩写）
   const modelMenuItems: MenuProps['items'] = useMemo(() => {
     const groups = new Map<string, ChatModelItem[]>();
@@ -695,7 +712,7 @@ const ChatPage: React.FC = () => {
 
   return (
     <XProvider>
-      <ChatContext.Provider value={{ onReload, setMessage }}>
+      <ChatContext.Provider value={{ onReload: handleReload, setMessage }}>
         {contextHolder}
         <div className={styles.layout}>
           {chatSide}

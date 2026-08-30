@@ -35,6 +35,11 @@ class ChatCompletionRequest(BaseModel):
     model: str = Field(min_length=1)
     messages: list[dict] = Field(description="OpenAI 格式消息数组，取最后一条 user")
     enable_thinking: bool = Field(default=False, alias="enableThinking")
+    regenerate: bool = Field(
+        default=False,
+        alias="regenerate",
+        description="重新生成：先删除该会话最后一条 assistant 消息（不新增 user 消息）",
+    )
 
     model_config = {"populate_by_name": True}
 

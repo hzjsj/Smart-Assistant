@@ -68,6 +68,21 @@ def update_session_model(db: Session, chat_id: str, model: str) -> None:
         db.commit()
 
 
+def delete_last_assistant(db: Session, chat_id: str) -> bool:
+    """删除该会话最后一条 assistant 消息（重新生成场景）。"""
+    last = (
+        db.query(ChatMessage)
+        .filter(ChatMessage.chat_id == chat_id, ChatMessage.role == "assistant")
+        .order_by(ChatMessage.id.desc())
+        .first()
+    )
+    if not last:
+        return False
+    db.delete(last)
+    db.commit()
+    return True
+
+
 def delete_session(db: Session, chat_id: str) -> bool:
     """删除会话并级联删除消息。"""
     obj = get_session_by_chat_id(db, chat_id)

@@ -160,8 +160,11 @@ async def chat_completions(
 
     user_content = _extract_last_user_content(body.messages)
     crud.update_session_model(db, body.chat_id, body.model)
-    # 先落库 user 消息（上下文以数据库为准）
-    crud.add_message(db, body.chat_id, "user", user_content)
+    if body.regenerate:
+        # 重新生成：user 消息已在库中，只移除上一条 assistant 回复
+        crud.delete_last_assistant(db, body.chat_id)
+    else:
+        crud.add_message(db, body.chat_id, "user", user_content)
 
     langchain_msgs = [
         HumanMessage(content=m["content"]) if m["role"] == "user" else AIMessage(content=m["content"])
