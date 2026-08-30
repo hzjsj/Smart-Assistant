@@ -1,11 +1,13 @@
 import json
 
-from fastapi import APIRouter, Cookie, Query, Response, Depends
+from fastapi import APIRouter, Cookie, Depends, Query, Response
 from sqlalchemy.orm import Session
 from database import get_db
+from auth import require_admin
 from users.schemas import (
     LoginParams, LoginResult, FakeCaptcha, ErrorResponse,
     CurrentUserResponse, CurrentUser, Geographic, Province, TagItem,
+    CreateUserRequest, UpdateUserRequest, DeleteUsersRequest,
 )
 from users import crud
 from users.models import User
@@ -98,3 +100,64 @@ def logout(mock_token: str | None = Cookie(None), db: Session = Depends(get_db))
 @router.post("/api/login/captcha")
 def get_captcha(phone: str | None = Query(None, description="手机号")):
     return FakeCaptcha().model_dump()
+
+
+# ── 用户 CRUD 接口（仅管理员）────────────────────────────────────────
+
+@router.get("/api/users", responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}})
+def list_users(
+    current: int = Query(1, ge=1, description="页码"),
+    pageSize: int = Query(10, ge=1, le=100, description="每页数量"),
+    username: str | None = Query(None, description="用户名模糊搜索"),
+    name: str | None = Query(None, description="姓名模糊搜索"),
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    return crud.get_users(db, current, pageSize, username, name)
+
+
+@router.post("/api/users", responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}})
+def create_user(
+    body: CreateUserRequest,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    if crud.get_user_by_username(db, body.username):
+        return {"success": False, "errorMessage": "用户名已存在"}
+    user = crud.create_user(
+        db,
+        username=body.username,
+        password=body.password,
+        name=body.name or body.username,
+        email=body.email or "",
+        phone=body.phone or "",
+        title=body.title or "",
+        group_name=body.group_name or "",
+        access=body.access,
+    )
+    return {"success": True, "data": crud._to_dict(user)}
+
+
+@router.put("/api/users/{user_id}", responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}})
+def update_user(
+    user_id: int,
+    body: UpdateUserRequest,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    user = crud.update_user(db, user_id, **body.model_dump(exclude_unset=True))
+    if not user:
+        return {"success": False, "errorMessage": "用户不存在"}
+    return {"success": True, "data": crud._to_dict(user)}
+
+
+@router.delete("/api/users", responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}})
+def delete_users(
+    body: DeleteUsersRequest,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+):
+    if admin.id in body.ids:
+        return {"success": False, "errorMessage": "不能删除当前登录账号"}
+    deleted = crud.delete_users(db, body.ids)
+    return {"success": True, "deleted": deleted}

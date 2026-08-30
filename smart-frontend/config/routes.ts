@@ -34,6 +34,13 @@ export default [
     ],
   },
   {
+    name: '用户管理',
+    icon: 'team',
+    path: '/user-list',
+    access: 'canAdmin',
+    component: './user-list',
+  },
+  {
     name: '查询表格',
     icon: 'table',
     path: '/list',
