@@ -111,11 +111,28 @@ def build_user_prompt(
 
 @router.post("/generate", operation_id="generateQuestionsApiChujuanjiGeneratePost")
 async def generate_questions(req: GenerateRequest):
-    """生成试卷题目（流式输出）"""
+    """生成试卷题目（流式输出）；支持带已有题目+优化建议重新生成"""
+
+    user_prompt = req.user_prompt
+    # 重新生成：已有题目 + 优化建议追加到提示词
+    if req.existing_questions or req.optimization_suggestion:
+        parts = [user_prompt]
+        if req.existing_questions:
+            parts.append(
+                "【已有题目】\n"
+                + json.dumps(req.existing_questions, ensure_ascii=False)
+            )
+        if req.optimization_suggestion:
+            parts.append(f"【优化建议】\n{req.optimization_suggestion}")
+        parts.append(
+            "请基于以上【已有题目】和【优化建议】重新生成优化后的题目，"
+            "保持题目数量与题型不变，仍严格按照系统提示的 JSON 格式输出。"
+        )
+        user_prompt = "\n\n".join(parts)
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": req.user_prompt}
+        {"role": "user", "content": user_prompt}
     ]
 
     # 用同步生成器（内部是阻塞的 SDK 迭代）：Starlette 会用线程池迭代 sync 生成器，

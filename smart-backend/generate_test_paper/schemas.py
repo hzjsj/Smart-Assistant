@@ -6,6 +6,9 @@ from datetime import datetime
 class GenerateRequest(BaseModel):
     """生成试卷请求"""
     user_prompt: str
+    # 重新生成：已有题目（不含深度思考内容）+ 用户优化建议
+    existing_questions: Optional[list] = None
+    optimization_suggestion: Optional[str] = None
 
 
 class SaveExamRequest(BaseModel):

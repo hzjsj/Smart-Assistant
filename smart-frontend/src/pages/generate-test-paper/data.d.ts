@@ -63,4 +63,7 @@ export interface GenerateRequest {
   quantity: number;
   difficulty: number;
   exam_type: ExamType;
+  /** 重新生成：已有题目（不含深度思考内容）+ 用户优化建议 */
+  existingQuestions?: QuestionItem[];
+  optimizationSuggestion?: string;
 }

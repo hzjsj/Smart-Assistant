@@ -45,7 +45,14 @@ export async function generateQuestionsStream(
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ user_prompt: userPrompt }),
+      body: JSON.stringify({
+        user_prompt: userPrompt,
+        // 重新生成：已有题目 + 优化建议（有值才带）
+        existing_questions: req.existingQuestions?.length
+          ? req.existingQuestions
+          : undefined,
+        optimization_suggestion: req.optimizationSuggestion || undefined,
+      }),
     });
 
     if (!response.ok) {

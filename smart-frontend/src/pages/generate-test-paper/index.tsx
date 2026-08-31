@@ -16,7 +16,9 @@ import {
   Empty,
   Flex,
   Form,
+  Input,
   message,
+  Modal,
   Select,
   Slider,
   Space,
@@ -701,87 +703,109 @@ const ChuJuanJiPage: React.FC = () => {
 
   const selectedCount = questions.length > 0 ? selectedIds.size : 0;
 
-  const handleGenerate = useCallback(() => {
-    if (remainCount <= 0 || generating) return;
+  // 公共：执行流式生成（初始生成 / 重新生成共用）
+  const runGenerate = useCallback(
+    (extra: { existingQuestions?: QuestionItem[]; optimizationSuggestion?: string }) => {
+      if (generating) return;
 
-    setGenerating(true);
-    setQuestions([]);
-    setSelectedIds(new Set());
-    setThinkingText('');
-    setThinkExpanded(true);
+      setGenerating(true);
+      setQuestions([]);
+      setSelectedIds(new Set());
+      setThinkingText('');
+      setThinkExpanded(true);
 
-    const kpLabel =
-      knowledgePoints.length > 0 ? knowledgePoints.join('、') : '';
+      const kpLabel =
+        knowledgePoints.length > 0 ? knowledgePoints.join('、') : '';
 
-    const request = {
+      const request = {
+        subject,
+        grade,
+        knowledge_point: kpLabel,
+        question_types: questionTypes,
+        quantity,
+        difficulty,
+        exam_type: examType,
+        existingQuestions: extra.existingQuestions,
+        optimizationSuggestion: extra.optimizationSuggestion,
+      };
+
+      generateQuestionsStream(
+        request,
+        (question: QuestionItem) => {
+          setQuestions((prev) => {
+            if (prev.some((q) => q.id === question.id)) return prev;
+            return [...prev, question];
+          });
+          setSelectedIds((prev) => new Set([...prev, question.id]));
+        },
+        async (parsedQuestions: QuestionItem[]) => {
+          if (parsedQuestions.length > 0) {
+            const title = `${subject}${examType}试卷`;
+            const saveResult = await saveExam({
+              title,
+              subject,
+              grade,
+              exam_type: examType,
+              knowledge_point: kpLabel,
+              question_types: questionTypes,
+              quantity,
+              difficulty,
+              questions: parsedQuestions,
+            });
+
+            if (saveResult.success) {
+              console.log('试卷已保存，ID:', saveResult.id);
+            } else {
+              console.error('试卷保存失败:', saveResult.error);
+            }
+          }
+          setGenerating(false);
+          // 深度思考结束：自动折叠思考面板（用户可点击重新展开查看）
+          setThinkExpanded(false);
+          setRemainCount((c) => c - 1);
+        },
+        (error: string) => {
+          console.error('生成失败:', error);
+          setGenerating(false);
+          setThinkExpanded(false);
+          messageApi.error(`生成失败：${error}`);
+        },
+        // 深度思考增量回调：累积思维链文本
+        (reasoning: string) => {
+          setThinkingText((prev) => prev + reasoning);
+        },
+      );
+    },
+    [
+      generating,
       subject,
       grade,
-      knowledge_point: kpLabel,
-      question_types: questionTypes,
+      knowledgePoints,
+      questionTypes,
       quantity,
       difficulty,
-      exam_type: examType,
-    };
+      examType,
+      messageApi,
+    ],
+  );
 
-    generateQuestionsStream(
-      request,
-      (question: QuestionItem) => {
-        setQuestions((prev) => {
-          if (prev.some((q) => q.id === question.id)) return prev;
-          return [...prev, question];
-        });
-        setSelectedIds((prev) => new Set([...prev, question.id]));
-      },
-      async (parsedQuestions: QuestionItem[]) => {
-        if (parsedQuestions.length > 0) {
-          const title = `${subject}${examType}试卷`;
-          const saveResult = await saveExam({
-            title,
-            subject,
-            grade,
-            exam_type: examType,
-            knowledge_point: kpLabel,
-            question_types: questionTypes,
-            quantity,
-            difficulty,
-            questions: parsedQuestions,
-          });
+  const handleGenerate = useCallback(() => {
+    if (remainCount <= 0) return;
+    runGenerate({});
+  }, [remainCount, runGenerate]);
 
-          if (saveResult.success) {
-            console.log('试卷已保存，ID:', saveResult.id);
-          } else {
-            console.error('试卷保存失败:', saveResult.error);
-          }
-        }
-        setGenerating(false);
-        // 深度思考结束：自动折叠思考面板（用户可点击重新展开查看）
-        setThinkExpanded(false);
-        setRemainCount((c) => c - 1);
-      },
-      (error: string) => {
-        console.error('生成失败:', error);
-        setGenerating(false);
-        setThinkExpanded(false);
-        messageApi.error(`生成失败：${error}`);
-      },
-      // 深度思考增量回调：累积思维链文本
-      (reasoning: string) => {
-        console.log('[DEBUG] onReasoning 收到:', reasoning.slice(0, 30));
-        setThinkingText((prev) => prev + reasoning);
-      },
-    );
-  }, [
-    remainCount,
-    generating,
-    subject,
-    grade,
-    knowledgePoints,
-    questionTypes,
-    quantity,
-    difficulty,
-    examType,
-    messageApi,
-  ]);
+  // ── 重新生成：弹窗输入优化建议 → 带已有题目+建议重新生成 ──
+  const [regenerateOpen, setRegenerateOpen] = useState(false);
+  const [regenerateSuggestion, setRegenerateSuggestion] = useState('');
+
+  const handleRegenerate = useCallback(() => {
+    setRegenerateOpen(false);
+    runGenerate({
+      existingQuestions: questions,
+      optimizationSuggestion: regenerateSuggestion.trim() || undefined,
+    });
+    setRegenerateSuggestion('');
+  }, [runGenerate, questions, regenerateSuggestion]);
 
   const handleToggleQuestion = useCallback((id: string) => {
     setSelectedIds((prev) => {
@@ -1169,13 +1193,21 @@ const ChuJuanJiPage: React.FC = () => {
                   <Text type="secondary">等待生成题目...</Text>
                 )}
               </Space>
-              <Button
-                type="primary"
-                disabled={selectedCount === 0}
-                onClick={() => setPdfPreviewVisible(true)}
-              >
-                组卷
-              </Button>
+              <Space size={4}>
+                <Button
+                  disabled={selectedCount === 0 || generating}
+                  onClick={() => setRegenerateOpen(true)}
+                >
+                  重新生成
+                </Button>
+                <Button
+                  type="primary"
+                  disabled={selectedCount === 0}
+                  onClick={() => setPdfPreviewVisible(true)}
+                >
+                  组卷
+                </Button>
+              </Space>
             </div>
           </Card>
         </div>
@@ -1192,6 +1224,31 @@ const ChuJuanJiPage: React.FC = () => {
         grade={grade}
         examType={examType}
       />
+
+      {/* 重新生成弹窗：输入优化建议 */}
+      <Modal
+        title="重新生成试卷"
+        open={regenerateOpen}
+        onOk={handleRegenerate}
+        onCancel={() => setRegenerateOpen(false)}
+        okText="重新生成"
+        cancelText="取消"
+        confirmLoading={generating}
+        destroyOnHidden
+      >
+        <div style={{ marginBottom: 12, color: 'rgba(0,0,0,0.45)' }}>
+          当前试卷：{subject} · {grade} · {examType} · 共 {questions.length} 题
+          （将基于已有题目 + 你的优化建议重新生成）
+        </div>
+        <Input.TextArea
+          value={regenerateSuggestion}
+          onChange={(e) => setRegenerateSuggestion(e.target.value)}
+          placeholder="请输入优化建议，例如：增加应用题难度、减少选择题数量、多出一些行程问题..."
+          autoSize={{ minRows: 3, maxRows: 6 }}
+          maxLength={500}
+          showCount
+        />
+      </Modal>
     </PageContainer>
   );
 };
