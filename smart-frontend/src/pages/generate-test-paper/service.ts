@@ -27,12 +27,14 @@ export function buildUserPrompt(req: GenerateRequest): string {
 
 /**
  * 流式生成试卷题目
+ * @param onReasoning 深度思考增量回调（可选，开启深度思考时收到 reasoning 事件）
  */
 export async function generateQuestionsStream(
   req: GenerateRequest,
   onQuestion: (question: QuestionItem) => void,
   onDone: (questions: QuestionItem[]) => void,
   onError: (error: string) => void,
+  onReasoning?: (reasoning: string) => void,
 ) {
   try {
     const userPrompt = buildUserPrompt(req);
@@ -85,6 +87,11 @@ export async function generateQuestionsStream(
             if (data.error) {
               onError(data.error);
               return;
+            }
+
+            // 深度思考增量（reasoning 事件）
+            if (data.reasoning && onReasoning) {
+              onReasoning(data.reasoning);
             }
 
             if (data.content) {

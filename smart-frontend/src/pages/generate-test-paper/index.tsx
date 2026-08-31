@@ -12,6 +12,7 @@ import {
   Button,
   Card,
   Checkbox,
+  Collapse,
   Empty,
   Flex,
   Form,
@@ -28,6 +29,53 @@ import { createStyles } from 'antd-style';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BlockMath, InlineMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
+
+/**
+ * 渲染深度思考文本：支持 LaTeX 公式（$...$ 行内、$$...$$ 块级）。
+ * 流式生成时公式可能未闭合（$ 只出现一半），此时按纯文本显示，避免 KaTeX 报错。
+ */
+const renderThinkingText = (text: string) => {
+  const nodes: React.ReactNode[] = [];
+  let key = 0;
+
+  // 先按块级公式 $$...$$ 拆分
+  const blockParts = text.split(/(\$\$[\s\S]*?\$\$)/g);
+  for (const part of blockParts) {
+    if (!part) continue;
+    const blockMatch = part.match(/^\$\$([\s\S]*?)\$\$$/);
+    if (blockMatch) {
+      // 块级公式：KaTeX 渲染，失败回退纯文本
+      try {
+        nodes.push(
+          <div key={key++} style={{ margin: '4px 0' }}>
+            <BlockMath math={blockMatch[1]} />
+          </div>,
+        );
+      } catch {
+        nodes.push(<span key={key++}>{part}</span>);
+      }
+      continue;
+    }
+
+    // 行内公式 $...$ 拆分（成对才渲染）
+    const inlineParts = part.split(/(\$[^$\n]*?\$)/g);
+    for (const ip of inlineParts) {
+      if (!ip) continue;
+      const inlineMatch = ip.match(/^\$([^$\n]*?)\$$/);
+      if (inlineMatch && ip.includes('$')) {
+        try {
+          nodes.push(<InlineMath key={key++} math={inlineMatch[1]} />);
+        } catch {
+          nodes.push(<span key={key++}>{ip}</span>);
+        }
+      } else {
+        nodes.push(<span key={key++}>{ip}</span>);
+      }
+    }
+  }
+
+  return nodes;
+};
 import {
   DEFAULT_QUESTION_TYPES,
   EXAM_TYPES,
@@ -606,7 +654,7 @@ const ChuJuanJiPage: React.FC = () => {
   const [questionTypes, setQuestionTypes] = useState<QuestionType[]>(
     DEFAULT_QUESTION_TYPES,
   );
-  const [quantity, setQuantity] = useState(30);
+  const [quantity, setQuantity] = useState(10);
   const [difficulty, setDifficulty] = useState(5);
   const [examType, setExamType] = useState<ExamType>('期末考试');
   const [showAnswer, setShowAnswer] = useState(true);
@@ -617,6 +665,12 @@ const ChuJuanJiPage: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [remainCount, setRemainCount] = useState(5);
   const [pdfPreviewVisible, setPdfPreviewVisible] = useState(false);
+  // 深度思考过程（流式累积；生成中展开，完成后折叠）
+  const [thinkingText, setThinkingText] = useState('');
+  // 深度思考面板展开状态（用户可点击展开/关闭）
+  const [thinkExpanded, setThinkExpanded] = useState(true);
+  // 是否显示深度思考过程（出题时可关闭）
+  const [showThinking, setShowThinking] = useState(true);
 
   // 获取知识点树和题型列表
   useEffect(() => {
@@ -653,6 +707,8 @@ const ChuJuanJiPage: React.FC = () => {
     setGenerating(true);
     setQuestions([]);
     setSelectedIds(new Set());
+    setThinkingText('');
+    setThinkExpanded(true);
 
     const kpLabel =
       knowledgePoints.length > 0 ? knowledgePoints.join('、') : '';
@@ -698,12 +754,20 @@ const ChuJuanJiPage: React.FC = () => {
           }
         }
         setGenerating(false);
+        // 深度思考结束：自动折叠思考面板（用户可点击重新展开查看）
+        setThinkExpanded(false);
         setRemainCount((c) => c - 1);
       },
       (error: string) => {
         console.error('生成失败:', error);
         setGenerating(false);
+        setThinkExpanded(false);
         messageApi.error(`生成失败：${error}`);
+      },
+      // 深度思考增量回调：累积思维链文本
+      (reasoning: string) => {
+        console.log('[DEBUG] onReasoning 收到:', reasoning.slice(0, 30));
+        setThinkingText((prev) => prev + reasoning);
       },
     );
   }, [
@@ -982,12 +1046,46 @@ const ChuJuanJiPage: React.FC = () => {
                   >
                     显示答案和解析
                   </Checkbox>
+                  <Checkbox
+                    checked={showThinking}
+                    onChange={(e) => setShowThinking(e.target.checked)}
+                  >
+                    显示深度思考过程
+                  </Checkbox>
                 </Space>
                 <Text type="secondary">共 {questions.length} 题</Text>
               </div>
             )}
 
             <div className={styles.rightScroll}>
+              {/* 深度思考过程：生成中/完成都可查看，可展开关闭；显示开关控制 */}
+              {showThinking && thinkingText && (
+                <Collapse
+                  ghost
+                  size="small"
+                  activeKey={thinkExpanded ? ['think'] : []}
+                  onChange={(keys) => setThinkExpanded(keys.includes('think'))}
+                  style={{ marginBottom: 16 }}
+                  items={[
+                    {
+                      key: 'think',
+                      label: generating ? '🤔 深度思考中...' : '💡 深度思考过程',
+                      children: (
+                        <div
+                          style={{
+                            whiteSpace: 'pre-wrap',
+                            color: 'rgba(0,0,0,0.45)',
+                            fontSize: 13,
+                            lineHeight: 1.8,
+                          }}
+                        >
+                          {renderThinkingText(thinkingText)}
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
+              )}
               {generating && questions.length === 0 ? (
                 <div className={styles.emptyWrap}>
                   <Spin size="large" description="AI 正在生成题目，请稍候...">

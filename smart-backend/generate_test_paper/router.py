@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/chujuanji", tags=["试卷生成"], dependencies=
 _client = None
 
 
-EXAM_MODEL = os.getenv("EXAM_MODEL", "qwen3.7-plus")
+EXAM_MODEL = os.getenv("EXAM_MODEL", "qwen3.8-flash")
 
 
 def get_client() -> OpenAI:
@@ -129,15 +129,16 @@ async def generate_questions(req: GenerateRequest):
                 top_p=0.8,
                 temperature=0.7,
                 extra_body={
-                    # 关闭深度思考：qwen3 系列默认 thinking，思维链只走 reasoning_content
-                    # 不出 content，导致前端长时间空白后一次性爆出全部答案
-                    "enable_thinking": False,
+                    # 深度思考：思维链走 reasoning_content 增量下发（前端渲染思考过程），
+                    # 题目内容走 content（前端状态机增量解析）
+                    "enable_thinking": True,
                     "enable_search": False,
                     "result_format": "message",
                 }
             )
 
             answer_content = ""
+            reasoning_content = ""
 
             for chunk in completion:
                 if not chunk.choices:
@@ -145,12 +146,18 @@ async def generate_questions(req: GenerateRequest):
 
                 delta = chunk.choices[0].delta
 
+                # 思维链增量：单独事件下发（re 前缀，与题目 content 区分）
+                reasoning = getattr(delta, "reasoning_content", None)
+                if reasoning:
+                    reasoning_content += reasoning
+                    yield f"data: {json.dumps({'reasoning': reasoning}, ensure_ascii=False)}\n\n"
+
                 if hasattr(delta, "content") and delta.content:
                     answer_content += delta.content
                     yield f"data: {json.dumps({'content': delta.content}, ensure_ascii=False)}\n\n"
 
-            # 发送完成信号
-            yield f"data: {json.dumps({'done': True, 'full_content': answer_content}, ensure_ascii=False)}\n\n"
+            # 发送完成信号（附完整思考内容，供前端记录）
+            yield f"data: {json.dumps({'done': True, 'full_content': answer_content, 'reasoning': reasoning_content}, ensure_ascii=False)}\n\n"
 
         except Exception as e:
             yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
