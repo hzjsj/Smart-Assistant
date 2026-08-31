@@ -7,10 +7,12 @@ const Settings: ProLayoutProps & {
   logo?: string;
 } = {
   navTheme: 'light',
-  colorPrimary: '#1677ff',
-  layout: 'mix',
+  // 拂晓蓝
+  colorPrimary: '#1890ff',
+  // 顶部导航布局（菜单在上方显示）
+  layout: 'top',
   contentWidth: 'Fluid',
-  fixedHeader: false,
+  fixedHeader: true,
   fixSiderbar: true,
   colorWeak: false,
   title: 'Smart Assistant',
