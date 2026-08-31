@@ -305,8 +305,8 @@ const providerFactory = (conversationKey: string) => {
           XModelParams,
           Partial<Record<SSEFields, XModelResponse>>
         >(
-          // 走相对路径，由 nginx/dev proxy 反代到后端；同源自动携带登录 Cookie
-          '/api/chat/completions',
+          // SSE 直连后端完整路径（不走 proxy，避免 HPM 缓冲）
+          'http://localhost:5000/api/chat/completions',
           {
             manual: true,
             params: {

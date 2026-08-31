@@ -1,10 +1,8 @@
 import type { GenerateRequest, QuestionItem, QuestionType } from './data';
 
-// 开发环境直连后端完整路径（SSE 流式不经过 dev proxy 缓冲），生产环境用 / 开头同源路径
-const isDev = process.env.NODE_ENV === 'development';
-const API_BASE = isDev
-  ? 'http://localhost:5000/api/chujuanji'
-  : '/api/chujuanji';
+// SSE 流式直连后端完整路径（不走 dev/preview proxy，避免 HPM 代理缓冲导致数据一次性吐出）
+// 生产部署时通过 nginx 的 proxy_buffering off 代理到后端，不依赖 dev proxy
+const API_BASE = 'http://localhost:5000/api/chujuanji';
 
 /**
  * 构建用户提示词
