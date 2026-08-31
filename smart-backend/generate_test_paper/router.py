@@ -128,8 +128,10 @@ async def generate_questions(req: GenerateRequest):
                 stream=True,
                 top_p=0.8,
                 temperature=0.7,
-                response_format={"type": "json_object"},
                 extra_body={
+                    # 关闭深度思考：qwen3 系列默认 thinking，思维链只走 reasoning_content
+                    # 不出 content，导致前端长时间空白后一次性爆出全部答案
+                    "enable_thinking": False,
                     "enable_search": False,
                     "result_format": "message",
                 }
@@ -180,11 +182,6 @@ def generate_questions_sync(req: GenerateRequest):
             stream=False,
             top_p=0.8,
             temperature=0.7,
-            response_format={"type": "json_object"},
-            extra_body={
-                "enable_search": False,
-                "result_format": "message",
-            }
         )
 
         answer_content = completion.choices[0].message.content
