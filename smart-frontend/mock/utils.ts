@@ -8,7 +8,7 @@ export const titles = [
   'Alipay',
   'Angular',
   'Ant Design',
-  'Ant Design Pro',
+  'Smart Assistant',
   'Bootstrap',
   'React',
   'Vue',

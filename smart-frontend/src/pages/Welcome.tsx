@@ -154,7 +154,7 @@ const Welcome: React.FC = () => {
     <PageContainer
       title={
         <>
-          欢迎使用 Ant Design Pro{' '}
+          欢迎使用 Smart Assistant{' '}
           <span key="v6" className="welcome-gradient-title">
             V6
           </span>{' '}
