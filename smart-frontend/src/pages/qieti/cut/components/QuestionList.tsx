@@ -16,23 +16,26 @@ const OVERSCAN = 3;
 
 interface QuestionListProps {
   questionPreviewList: QuestionPreview[];
+  activeQuestionId: string | null;
   onLocateQuestion: (pageIndex: number, questionId: string) => void;
   onDeleteQuestion: (id: string) => void;
 }
 
 const QuestionItem = memo(function QuestionItem({
   preview,
+  isActive,
   onLocateQuestion,
   onDeleteQuestion,
 }: {
   preview: QuestionPreview;
+  isActive: boolean;
   onLocateQuestion: (pageIndex: number, questionId: string) => void;
   onDeleteQuestion: (id: string) => void;
 }) {
-  const { styles } = useStyles();
+  const { styles, cx } = useStyles();
   return (
     <div
-      className={styles.questionItem}
+      className={cx(styles.questionItem, isActive && 'active')}
       onClick={() => onLocateQuestion(preview.pageIndex, preview.id)}
     >
       <div className={styles.qRow}>
@@ -67,6 +70,7 @@ const QuestionItem = memo(function QuestionItem({
 /** 右侧题目列表：手写虚拟滚动（按估算高度 + overscan），题目多时不卡 */
 export default function QuestionList({
   questionPreviewList,
+  activeQuestionId,
   onLocateQuestion,
   onDeleteQuestion,
 }: QuestionListProps) {
@@ -85,6 +89,26 @@ export default function QuestionList({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // 画布上选中题目时，把对应列表项滚入视野（对齐原型的选中行可见）
+  useEffect(() => {
+    if (!activeQuestionId) return;
+    const el = listRef.current;
+    if (!el) return;
+    const index = deferredList.findIndex((item) => item.id === activeQuestionId);
+    if (index < 0) return;
+    const itemTop = index * ITEM_ESTIMATED_HEIGHT;
+    const itemBottom = itemTop + ITEM_ESTIMATED_HEIGHT;
+    if (
+      itemTop < el.scrollTop ||
+      itemBottom > el.scrollTop + el.clientHeight
+    ) {
+      el.scrollTo({
+        top: Math.max(0, itemTop - (el.clientHeight - ITEM_ESTIMATED_HEIGHT) / 2),
+        behavior: 'smooth',
+      });
+    }
+  }, [activeQuestionId, deferredList]);
 
   const total = deferredList.length;
   const visibleCount = Math.max(
@@ -124,6 +148,7 @@ export default function QuestionList({
           <QuestionItem
             key={preview.id}
             preview={preview}
+            isActive={preview.id === activeQuestionId}
             onLocateQuestion={onLocateQuestion}
             onDeleteQuestion={onDeleteQuestion}
           />

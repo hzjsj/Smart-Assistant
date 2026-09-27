@@ -749,6 +749,7 @@ export default function QietiCutPage() {
           </div>
           <QuestionList
             questionPreviewList={questionPreviewList}
+            activeQuestionId={activeQuestionId}
             onLocateQuestion={locateQuestion}
             onDeleteQuestion={deleteQuestion}
           />

@@ -135,6 +135,11 @@ export const useStyles = createStyles(({ token, css }) => ({
     &:hover {
       border-color: ${token.colorPrimaryBorderHover};
     }
+    /* 选中态：对齐 test/qieti 原型的选中行高亮 */
+    &.active {
+      border-color: ${token.colorPrimary};
+      background: ${token.colorPrimaryBg};
+    }
   `,
   qRow: css`
     display: flex;

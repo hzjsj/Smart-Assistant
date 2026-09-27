@@ -13,11 +13,22 @@ import { MIN_SIZE } from '../../constants';
 import type { QietiPage, QietiQuestion, Rect } from '../../data';
 import { clamp, getQuestionRects, normalizedRect } from '../../utils/questionUtils';
 
-/** 标签视觉尺寸（css px），经反缩放保证任意 Stage 缩放下视觉恒定 */
+/** 题号标签样式（对齐 test/qieti 原型 LABEL_STYLE，尺寸为 css px，经反缩放保持视觉恒定） */
 const LABEL_HEIGHT = 20;
 const LABEL_BASE_WIDTH = 40;
 const LABEL_MULTI_SUFFIX_WIDTH = 16;
-const LABEL_DELETE_WIDTH = 18;
+const LABEL_DELETE_WIDTH = 16;
+const LABEL_FONT_SIZE = 12;
+const LABEL_FONT_FAMILY = 'Arial';
+const LABEL_FONT_WEIGHT = '500';
+
+/** 框体/标签配色（同原型） */
+const RECT_STROKE = '#004fff7f';
+const RECT_FILL_ACTIVE = 'rgba(0, 79, 255, 0.1)';
+const LABEL_BG = 'rgba(0, 79, 255, 0.2)';
+const LABEL_BG_ACTIVE = '#004fff';
+const LABEL_TEXT = 'rgba(0, 79, 255, 0.5)';
+const LABEL_TEXT_ACTIVE = '#fff';
 
 interface KonvaPageStageProps {
   page: QietiPage;
@@ -159,9 +170,9 @@ function QuestionRectShape({
           onTransformEnd={handleTransformEnd}
           width={rect.w}
           height={rect.h}
-          fill={isActive ? 'rgba(0, 79, 255, 0.12)' : 'rgba(0, 79, 255, 0.08)'}
-          stroke={isActive ? '#004fff' : '#004fff7f'}
-          strokeWidth={1.5}
+          fill={isActive ? RECT_FILL_ACTIVE : 'transparent'}
+          stroke={RECT_STROKE}
+          strokeWidth={1}
           strokeScaleEnabled={false}
         />
         {/* 题号标签：反缩放 Group，内部一律 css px */}
@@ -175,23 +186,24 @@ function QuestionRectShape({
             width={labelWidth}
             height={LABEL_HEIGHT}
             cornerRadius={[0, 0, 4, 4]}
-            fill={isActive ? '#004fff' : 'rgba(0, 79, 255, 0.2)'}
+            fill={isActive ? LABEL_BG_ACTIVE : LABEL_BG}
           />
           <Text
-            x={6}
-            y={2}
-            width={labelWidth - (hasDelete ? LABEL_DELETE_WIDTH : 0) - 10}
-            height={LABEL_HEIGHT - 4}
+            width={labelWidth - (hasDelete ? LABEL_DELETE_WIDTH : 0)}
+            height={LABEL_HEIGHT}
             text={labelText}
-            fontSize={12}
+            fontSize={LABEL_FONT_SIZE}
+            fontFamily={LABEL_FONT_FAMILY}
+            fontStyle={LABEL_FONT_WEIGHT}
+            align="center"
             verticalAlign="middle"
-            fill={isActive ? '#fff' : 'rgba(255, 255, 255, 0.95)'}
+            fill={isActive ? LABEL_TEXT_ACTIVE : LABEL_TEXT}
             listening={false}
           />
           {hasDelete ? (
             <Group
-              x={labelWidth - 17}
-              y={2}
+              x={labelWidth - LABEL_DELETE_WIDTH}
+              y={(LABEL_HEIGHT - LABEL_DELETE_WIDTH) / 2}
               onClick={(e) => {
                 e.cancelBubble = true;
                 onRequestDeleteQuestion(question.id, question.no);
@@ -200,19 +212,19 @@ function QuestionRectShape({
               onMouseLeave={(e) => setCursor(e, 'move')}
             >
               <KonvaRect
-                width={16}
-                height={16}
+                width={LABEL_DELETE_WIDTH}
+                height={LABEL_DELETE_WIDTH}
                 cornerRadius={3}
-                fill="rgba(255, 255, 255, 0.2)"
+                fill="rgba(255, 255, 255, 0.25)"
               />
               <Text
-                width={16}
-                height={16}
+                width={LABEL_DELETE_WIDTH}
+                height={LABEL_DELETE_WIDTH}
                 text="×"
                 fontSize={12}
                 align="center"
                 verticalAlign="middle"
-                fill="#fff"
+                fill={isActive ? LABEL_TEXT_ACTIVE : LABEL_TEXT}
                 listening={false}
               />
             </Group>
