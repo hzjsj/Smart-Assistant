@@ -6,8 +6,12 @@ export const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     flex-direction: column;
     gap: ${token.margin};
-    height: calc(100vh - 216px);
+    /* 去掉页头后几乎占满视口（顶部导航 56 + 布局上下留白 48） */
+    height: calc(100vh - 104px);
     min-height: 480px;
+    /* 为右侧 Win10 导航栏腾出空间（随收起/展开平滑过渡） */
+    padding-right: var(--qieti-nav-w, 0px);
+    transition: padding-right 0.25s ease;
   `,
   splitter: css`
     flex: 1;
@@ -56,23 +60,19 @@ export const useStyles = createStyles(({ token, css }) => ({
       border-color: ${token.colorPrimaryBorder};
     }
   `,
-  pageTitle: css`
-    font-size: ${token.fontSizeSM};
-    color: ${token.colorTextSecondary};
-    margin-bottom: ${token.marginXS};
-  `,
   pageStage: css`
     line-height: 0;
   `,
   thumbDock: css`
     position: fixed;
-    right: ${token.margin};
+    right: calc(${token.margin} + var(--qieti-nav-w, 0px));
     bottom: ${token.margin};
     z-index: 1000;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
     gap: ${token.marginXS};
+    transition: right 0.25s ease;
   `,
   thumbs: css`
     display: flex;
@@ -151,8 +151,52 @@ export const useStyles = createStyles(({ token, css }) => ({
     font-size: ${token.fontSizeSM};
     color: ${token.colorTextSecondary};
   `,
-  toolbarText: css`
-    color: ${token.colorTextSecondary};
+  /* Win10 风格右侧导航栏：贴边窄条、图标按钮、可滑出收起 */
+  sideNav: css`
+    position: fixed;
+    top: 56px;
+    right: 0;
+    bottom: 0;
+    width: 56px;
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: ${token.paddingXS} 0;
+    background: ${token.colorBgContainer};
+    border-left: 1px solid ${token.colorBorderSecondary};
+    transition: transform 0.25s ease;
+  `,
+  sideNavHidden: css`
+    transform: translateX(105%);
+  `,
+  sideNavBtn: css`
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  `,
+  sideNavBtnActive: css`
+    color: ${token.colorPrimary};
+    background: ${token.colorPrimaryBg};
+    &:hover {
+      background: ${token.colorPrimaryBgHover};
+    }
+  `,
+  sideNavDivider: css`
+    width: 32px;
+    height: 1px;
+    background: ${token.colorBorderSecondary};
+    margin: 4px 0;
+  `,
+  sideNavSpacer: css`
+    flex: 1;
+  `,
+  sideNavTab: css`
+    position: fixed;
+    top: 64px;
+    right: 0;
+    z-index: 1100;
   `,
   mathImage: css`
     max-width: 100%;

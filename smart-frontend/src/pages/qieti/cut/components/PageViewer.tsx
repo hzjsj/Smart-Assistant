@@ -237,9 +237,6 @@ export default function PageViewer({
             )}
             onClick={() => onSelectPage(pageIndex)}
           >
-            <div className={styles.pageTitle}>
-              第 {pageIndex + 1} 页 · {page.name}
-            </div>
             <div className={styles.pageStage}>
               <KonvaPageStage
                 page={page}
