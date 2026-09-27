@@ -25,26 +25,6 @@ export function normalizedRect(
   return { x: left, y: top, w: right - left, h: bottom - top };
 }
 
-export function resizeRectByHandle(
-  origin: Rect,
-  handle: string,
-  point: { x: number; y: number },
-  maxW: number,
-  maxH: number,
-): Rect {
-  let left = origin.x;
-  let right = origin.x + origin.w;
-  let top = origin.y;
-  let bottom = origin.y + origin.h;
-
-  if (handle.includes('n')) top = clamp(point.y, 0, bottom - MIN_SIZE);
-  if (handle.includes('s')) bottom = clamp(point.y, top + MIN_SIZE, maxH);
-  if (handle.includes('w')) left = clamp(point.x, 0, right - MIN_SIZE);
-  if (handle.includes('e')) right = clamp(point.x, left + MIN_SIZE, maxW);
-
-  return { x: left, y: top, w: right - left, h: bottom - top };
-}
-
 export function serializeRect(rect: Rect): Rect {
   return {
     x: Number(rect.x.toFixed(2)),

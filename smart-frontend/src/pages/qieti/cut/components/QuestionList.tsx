@@ -26,15 +26,38 @@ const QuestionItem = memo(function QuestionItem({
   isActive,
   onLocateQuestion,
   onDeleteQuestion,
+  onMeasure,
 }: {
   preview: QuestionPreview;
   isActive: boolean;
   onLocateQuestion: (pageIndex: number, questionId: string) => void;
   onDeleteQuestion: (id: string) => void;
+  onMeasure: (id: string, height: number) => void;
 }) {
   const { styles, cx } = useStyles();
+  const itemRef = useRef<HTMLDivElement>(null);
+
+  // 实测行高（含下外边距）：图片/公式加载会改变高度，ResizeObserver 持续上报
+  useEffect(() => {
+    const el = itemRef.current;
+    if (!el) return;
+    let lastHeight = 0;
+    const observer = new ResizeObserver(() => {
+      const marginBottom =
+        Number.parseFloat(getComputedStyle(el).marginBottom) || 0;
+      const height = el.offsetHeight + marginBottom;
+      if (height && height !== lastHeight) {
+        lastHeight = height;
+        onMeasure(preview.id, height);
+      }
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [preview.id, onMeasure]);
+
   return (
     <div
+      ref={itemRef}
       className={cx(styles.questionItem, isActive && 'active')}
       onClick={() => onLocateQuestion(preview.pageIndex, preview.id)}
     >
@@ -67,7 +90,22 @@ const QuestionItem = memo(function QuestionItem({
   );
 });
 
-/** 右侧题目列表：手写虚拟滚动（按估算高度 + overscan），题目多时不卡 */
+/** 前缀和 offsets 中找最后一个 ≤ y 的下标（offsets[i] 为第 i 项顶部位置） */
+function findIndexByOffset(offsets: number[], y: number): number {
+  let lo = 0;
+  let hi = offsets.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (offsets[mid] <= y) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return lo;
+}
+
+/** 右侧题目列表：虚拟滚动（实测高度 + 未测项估算），题目多时不卡、选中定位准 */
 export default function QuestionList({
   questionPreviewList,
   activeQuestionId,
@@ -78,6 +116,9 @@ export default function QuestionList({
   const listRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
+  const [heightMap, setHeightMap] = useState<Map<string, number>>(
+    () => new Map(),
+  );
   const deferredList = useDeferredValue(questionPreviewList);
 
   useEffect(() => {
@@ -90,38 +131,76 @@ export default function QuestionList({
     return () => observer.disconnect();
   }, []);
 
-  // 画布上选中题目时，把对应列表项滚入视野（对齐原型的选中行可见）
+  const handleMeasure = useMemo(() => {
+    let pending = new Map<string, number>();
+    // 批量合并同一帧内的多次上报，避免逐项触发重渲染
+    let scheduled = false;
+    const flush = () => {
+      const batch = pending;
+      pending = new Map();
+      scheduled = false;
+      setHeightMap((prev) => {
+        let changed = false;
+        const next = new Map(prev);
+        for (const [id, height] of batch) {
+          if (prev.get(id) !== height) {
+            next.set(id, height);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    };
+    return (id: string, height: number) => {
+      pending.set(id, height);
+      if (!scheduled) {
+        scheduled = true;
+        queueMicrotask(flush);
+      }
+    };
+  }, []);
+
+  // 前缀和布局：已测项用实测高度，未测项回退估算值
+  const layout = useMemo(() => {
+    const offsets: number[] = [0];
+    for (const item of deferredList) {
+      offsets.push(
+        offsets[offsets.length - 1] +
+          (heightMap.get(item.id) ?? ITEM_ESTIMATED_HEIGHT),
+      );
+    }
+    return offsets;
+  }, [deferredList, heightMap]);
+  const totalHeight = layout[layout.length - 1];
+
+  // 画布上选中题目时，把对应列表项滚入视野（实测高度定位，渲染后测量更新会自动校正）
   useEffect(() => {
     if (!activeQuestionId) return;
     const el = listRef.current;
     if (!el) return;
     const index = deferredList.findIndex((item) => item.id === activeQuestionId);
     if (index < 0) return;
-    const itemTop = index * ITEM_ESTIMATED_HEIGHT;
-    const itemBottom = itemTop + ITEM_ESTIMATED_HEIGHT;
-    if (
-      itemTop < el.scrollTop ||
-      itemBottom > el.scrollTop + el.clientHeight
-    ) {
+    const itemTop = layout[index];
+    const itemHeight = layout[index + 1] - layout[index];
+    if (itemTop < el.scrollTop || itemTop + itemHeight > el.scrollTop + el.clientHeight) {
       el.scrollTo({
-        top: Math.max(0, itemTop - (el.clientHeight - ITEM_ESTIMATED_HEIGHT) / 2),
+        top: Math.max(0, itemTop - (el.clientHeight - itemHeight) / 2),
         behavior: 'smooth',
       });
     }
-  }, [activeQuestionId, deferredList]);
+  }, [activeQuestionId, deferredList, layout]);
 
   const total = deferredList.length;
-  const visibleCount = Math.max(
-    1,
-    Math.ceil(viewportHeight / ITEM_ESTIMATED_HEIGHT) + OVERSCAN * 2,
-  );
   const startIndex = Math.max(
     0,
-    Math.floor(scrollTop / ITEM_ESTIMATED_HEIGHT) - OVERSCAN,
+    findIndexByOffset(layout, scrollTop) - OVERSCAN,
   );
-  const endIndex = Math.min(total, startIndex + visibleCount);
-  const topSpacer = startIndex * ITEM_ESTIMATED_HEIGHT;
-  const bottomSpacer = Math.max(0, (total - endIndex) * ITEM_ESTIMATED_HEIGHT);
+  const endIndex = Math.min(
+    total,
+    findIndexByOffset(layout, scrollTop + viewportHeight) + 1 + OVERSCAN,
+  );
+  const topSpacer = layout[startIndex];
+  const bottomSpacer = Math.max(0, totalHeight - layout[endIndex]);
   const visibleItems = useMemo(
     () => deferredList.slice(startIndex, endIndex),
     [deferredList, startIndex, endIndex],
@@ -151,6 +230,7 @@ export default function QuestionList({
             isActive={preview.id === activeQuestionId}
             onLocateQuestion={onLocateQuestion}
             onDeleteQuestion={onDeleteQuestion}
+            onMeasure={handleMeasure}
           />
         ))}
         {total ? (

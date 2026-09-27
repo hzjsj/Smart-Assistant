@@ -29,7 +29,7 @@ async function withErrorDetail<T>(task: () => Promise<T>): Promise<T> {
   }
 }
 
-/** 上传切题图片（multipart），后端转存火山 TOS */
+/** 上传切题图片（multipart），后端转存阿里云 OSS */
 export async function uploadImage(file: File): Promise<UploadApiResponse> {
   const formData = new FormData();
   formData.append('file', file);

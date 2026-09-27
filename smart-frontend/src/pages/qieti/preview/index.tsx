@@ -254,7 +254,7 @@ export default function QietiPrototypePreviewPage() {
         <Alert
           type="error"
           showIcon
-          title="背景图加载失败，请检查网络后刷新"
+          message="背景图加载失败，请检查网络后刷新"
           style={{ marginBottom: 16 }}
         />
       ) : null}

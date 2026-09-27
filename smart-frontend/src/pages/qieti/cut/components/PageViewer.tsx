@@ -24,7 +24,6 @@ interface PageViewerProps {
     rect: Rect,
   ) => void;
   onCreateQuestion: (pageIndex: number, rect: Rect) => void;
-  onRequestDeleteQuestion: (questionId: string, no: number) => void;
   getPageImageSrc: (page: QietiPage) => string;
 }
 
@@ -41,7 +40,6 @@ export default function PageViewer({
   onDeselectQuestion,
   onChangeRect,
   onCreateQuestion,
-  onRequestDeleteQuestion,
   getPageImageSrc,
 }: PageViewerProps) {
   const { styles, cx } = useStyles();
@@ -115,7 +113,6 @@ export default function PageViewer({
                 onDeselectQuestion={onDeselectQuestion}
                 onChangeRect={onChangeRect}
                 onCreateQuestion={onCreateQuestion}
-                onRequestDeleteQuestion={onRequestDeleteQuestion}
               />
             </div>
           </section>

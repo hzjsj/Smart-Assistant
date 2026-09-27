@@ -32,7 +32,7 @@ export interface QietiPage {
   name: string;
   /** 本地 dataURL 或远程 URL */
   imageUrl: string;
-  /** 已上传到 TOS 的远程 URL（自动识别前为 null） */
+  /** 已上传到阿里云 OSS 的远程 URL（自动识别前为 null） */
   uploadedImageUrl: string | null;
   width: number;
   height: number;

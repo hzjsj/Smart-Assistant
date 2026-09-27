@@ -152,6 +152,9 @@ export const useStyles = createStyles(({ token, css }) => ({
     font-size: ${token.fontSizeSM};
     color: ${token.colorTextSecondary};
   `,
+  toolbarText: css`
+    color: ${token.colorTextSecondary};
+  `,
   mathImage: css`
     max-width: 100%;
     border-radius: ${token.borderRadius};

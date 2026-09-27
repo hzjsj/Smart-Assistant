@@ -17,14 +17,14 @@ import { clamp, getQuestionRects, normalizedRect } from '../../utils/questionUti
 const LABEL_HEIGHT = 20;
 const LABEL_BASE_WIDTH = 40;
 const LABEL_MULTI_SUFFIX_WIDTH = 16;
-const LABEL_DELETE_WIDTH = 16;
 const LABEL_PADDING = 6;
 const LABEL_FONT_SIZE = 12;
 const LABEL_FONT_FAMILY = 'Arial';
 const LABEL_FONT_WEIGHT = '500';
 
-/** 框体/标签配色（同原型） */
+/** 框体/标签配色（同原型；hover 为增强项，填充深浅介于透明与激活之间） */
 const RECT_STROKE = '#004fff7f';
+const RECT_FILL_HOVER = 'rgba(0, 79, 255, 0.04)';
 const RECT_FILL_ACTIVE = 'rgba(0, 79, 255, 0.1)';
 const LABEL_BG = 'rgba(0, 79, 255, 0.2)';
 const LABEL_BG_ACTIVE = '#004fff';
@@ -45,7 +45,6 @@ interface KonvaPageStageProps {
     rect: Rect,
   ) => void;
   onCreateQuestion: (pageIndex: number, rect: Rect) => void;
-  onRequestDeleteQuestion: (questionId: string, no: number) => void;
 }
 
 interface DraftRect {
@@ -65,9 +64,11 @@ function QuestionRectShape({
   page,
   scale,
   isActive,
+  isHovered,
+  dimmed,
   onSelectQuestion,
+  onHoverQuestion,
   onChangeRect,
-  onRequestDeleteQuestion,
 }: {
   question: QietiQuestion;
   rect: Rect;
@@ -77,14 +78,16 @@ function QuestionRectShape({
   page: QietiPage;
   scale: number;
   isActive: boolean;
+  isHovered: boolean;
+  dimmed: boolean;
   onSelectQuestion: (questionId: string, pageIndex: number) => void;
+  onHoverQuestion: (questionId: string | null) => void;
   onChangeRect: (
     pageIndex: number,
     questionId: string,
     rectIndex: number,
     rect: Rect,
   ) => void;
-  onRequestDeleteQuestion: (questionId: string, no: number) => void;
 }) {
   const groupRef = useRef<Konva.Group>(null);
   const rectRef = useRef<Konva.Rect>(null);
@@ -138,13 +141,12 @@ function QuestionRectShape({
     onChangeRect(pageIndex, question.id, rectIndex, { x, y, w, h });
   };
 
-  const hasDelete = rectIndex === 0;
+  // 标签宽度与选中态无关（对齐原型：选中仅变配色，不加宽）
   const labelWidth =
     LABEL_BASE_WIDTH +
-    (rectsCount > 1 ? LABEL_MULTI_SUFFIX_WIDTH : 0) +
-    (hasDelete ? LABEL_DELETE_WIDTH : 0);
+    (rectsCount > 1 ? LABEL_MULTI_SUFFIX_WIDTH : 0);
   const labelText = `${question.no}题${rectsCount > 1 ? ` (${rectIndex + 1})` : ''}`;
-  // canvas 会裁剪出界绘制：标签默认悬于框上方，贴顶时回落到框内顶部
+  // canvas 会裁剪出界绘制：标签默认悬于框上方，贴近页面顶部时回落到 y=0 防裁剪
   const labelLocalY =
     rect.y - LABEL_HEIGHT / scale < 0 ? -rect.y : -LABEL_HEIGHT / scale;
 
@@ -155,6 +157,7 @@ function QuestionRectShape({
         x={rect.x}
         y={rect.y}
         draggable
+        opacity={dimmed ? 0.4 : 1}
         dragBoundFunc={(pos) => ({
           x: clamp(pos.x, 0, (page.width - rect.w) * scale),
           y: clamp(pos.y, 0, (page.height - rect.h) * scale),
@@ -163,15 +166,23 @@ function QuestionRectShape({
         onTap={handleSelect}
         onDragStart={handleSelect}
         onDragEnd={handleDragEnd}
-        onMouseEnter={(e) => setCursor(e, 'move')}
-        onMouseLeave={(e) => setCursor(e, 'crosshair')}
+        onMouseEnter={(e) => {
+          setCursor(e, 'move');
+          onHoverQuestion(question.id);
+        }}
+        onMouseLeave={(e) => {
+          setCursor(e, 'crosshair');
+          onHoverQuestion(null);
+        }}
       >
         <KonvaRect
           ref={rectRef}
           onTransformEnd={handleTransformEnd}
           width={rect.w}
           height={rect.h}
-          fill={isActive ? RECT_FILL_ACTIVE : 'transparent'}
+          fill={
+            isActive ? RECT_FILL_ACTIVE : isHovered ? RECT_FILL_HOVER : 'transparent'
+          }
           stroke={RECT_STROKE}
           strokeWidth={1}
           strokeScaleEnabled={false}
@@ -201,35 +212,6 @@ function QuestionRectShape({
             fill={isActive ? LABEL_TEXT_ACTIVE : LABEL_TEXT}
             listening={false}
           />
-          {hasDelete ? (
-            <Group
-              x={labelWidth - LABEL_DELETE_WIDTH}
-              y={(LABEL_HEIGHT - LABEL_DELETE_WIDTH) / 2}
-              onClick={(e) => {
-                e.cancelBubble = true;
-                onRequestDeleteQuestion(question.id, question.no);
-              }}
-              onMouseEnter={(e) => setCursor(e, 'pointer')}
-              onMouseLeave={(e) => setCursor(e, 'move')}
-            >
-              <KonvaRect
-                width={LABEL_DELETE_WIDTH}
-                height={LABEL_DELETE_WIDTH}
-                cornerRadius={3}
-                fill="rgba(255, 255, 255, 0.25)"
-              />
-              <Text
-                width={LABEL_DELETE_WIDTH}
-                height={LABEL_DELETE_WIDTH}
-                text="×"
-                fontSize={12}
-                align="center"
-                verticalAlign="middle"
-                fill={isActive ? LABEL_TEXT_ACTIVE : LABEL_TEXT}
-                listening={false}
-              />
-            </Group>
-          ) : null}
         </Group>
       </Group>
       {isActive ? (
@@ -238,8 +220,9 @@ function QuestionRectShape({
           flipEnabled={false}
           keepRatio={false}
           rotateEnabled={false}
-          anchorSize={8 / scale}
-          anchorStrokeWidth={1.5 / scale}
+          // 锚点视觉尺寸对齐原型（Konva 默认 10px 白底蓝边、1px 描边），按 scale 反算
+          anchorSize={10 / scale}
+          anchorStrokeWidth={1 / scale}
           borderStrokeWidth={1 / scale}
           boundBoxFunc={(oldBox, newBox) =>
             Math.abs(newBox.width) < MIN_SIZE * scale ||
@@ -263,7 +246,6 @@ export default function KonvaPageStage({
   onDeselectQuestion,
   onChangeRect,
   onCreateQuestion,
-  onRequestDeleteQuestion,
 }: KonvaPageStageProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage>(null);
@@ -271,6 +253,8 @@ export default function KonvaPageStage({
   const [stageWidth, setStageWidth] = useState(0);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [draft, setDraft] = useState<DraftRect | null>(null);
+  // 悬停高亮按题联动：同题所有框一起高亮，与选中联动一致
+  const [hoverQuestionId, setHoverQuestionId] = useState<string | null>(null);
 
   const scale =
     page.width > 0 && stageWidth > 0 ? stageWidth / page.width : 1;
@@ -410,23 +394,73 @@ export default function KonvaPageStage({
                   page={page}
                   scale={scale}
                   isActive={q.id === activeQuestionId}
+                  isHovered={q.id === hoverQuestionId}
+                  dimmed={!!draft}
                   onSelectQuestion={onSelectQuestion}
+                  onHoverQuestion={setHoverQuestionId}
                   onChangeRect={onChangeRect}
-                  onRequestDeleteQuestion={onRequestDeleteQuestion}
                 />
               ));
             })}
-            {draft ? (
-              <KonvaRect
-                {...normalizedRect(draft.x1, draft.y1, draft.x2, draft.y2)}
-                fill="rgba(0, 79, 255, 0.12)"
-                stroke="#004fff"
-                strokeWidth={1.5}
-                strokeScaleEnabled={false}
-                dash={[4 / scale, 4 / scale]}
-                listening={false}
-              />
-            ) : null}
+            {draft
+              ? (() => {
+                  const r = normalizedRect(
+                    draft.x1,
+                    draft.y1,
+                    draft.x2,
+                    draft.y2,
+                  );
+                  const tooSmall = r.w < MIN_SIZE || r.h < MIN_SIZE;
+                  const sizeText = `${Math.round(r.w)} × ${Math.round(r.h)}`;
+                  const badgeW = sizeText.length * 7 + 12;
+                  // 徽标悬于框左上角上方，贴顶时落入框内；框比徽标窄时左移防出界
+                  const badgeY =
+                    r.y * scale < LABEL_HEIGHT + 4 ? 2 : -LABEL_HEIGHT;
+                  const badgeX = Math.min(0, r.w * scale - badgeW);
+                  return (
+                    <>
+                      <KonvaRect
+                        x={r.x}
+                        y={r.y}
+                        width={r.w}
+                        height={r.h}
+                        fill="rgba(0, 79, 255, 0.12)"
+                        stroke="#004fff"
+                        strokeWidth={1.5}
+                        strokeScaleEnabled={false}
+                        listening={false}
+                      />
+                      {/* 实时尺寸徽标（反缩放恒定字号）：低于最小尺寸时变红，松开将不生成 */}
+                      <Group
+                        x={r.x + badgeX / scale}
+                        y={r.y + badgeY / scale}
+                        scaleX={1 / scale}
+                        scaleY={1 / scale}
+                        listening={false}
+                      >
+                        <KonvaRect
+                          width={badgeW}
+                          height={LABEL_HEIGHT}
+                          cornerRadius={4}
+                          fill={tooSmall ? '#ff4d4f' : '#004fff'}
+                        />
+                        <Text
+                          width={badgeW}
+                          height={LABEL_HEIGHT}
+                          text={sizeText}
+                          fontSize={11}
+                          fontFamily={LABEL_FONT_FAMILY}
+                          fontStyle="bold"
+                          align="center"
+                          verticalAlign="middle"
+                          fill="#fff"
+                          listening={false}
+                        />
+                      </Group>
+                    </>
+                  );
+                })()
+              : null}
           </Layer>
         </Stage>
       ) : null}

@@ -6,7 +6,7 @@ import {
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import { Link } from '@umijs/max';
-import { Alert, App, Button, Popconfirm, Space } from 'antd';
+import { Alert, App, Button, Popconfirm, Space, Switch } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CACHE_KEY,
@@ -82,6 +82,10 @@ export default function QietiCutPage() {
   const [hintError, setHintError] = useState(false);
   const [detecting, setDetecting] = useState(false);
   const [exportingMd, setExportingMd] = useState(false);
+  /** 一题多框：接口碎片默认归并为一题；关闭后每个碎片独立成题 */
+  const [mergeFragments, setMergeFragments] = useState(true);
+  /** 供 runAutoDetect 闭包读取的当前值（ref 避免依赖过期闭包） */
+  const mergeFragmentsRef = useRef(true);
 
   useEffect(() => {
     pagesRef.current = pages;
@@ -153,6 +157,7 @@ export default function QietiCutPage() {
       const cache = JSON.parse(raw) as {
         pages?: QietiPage[];
         currentPageIndex?: number;
+        mergeFragments?: boolean;
       };
       if (Array.isArray(cache.pages)) {
         const normalizedPages = cache.pages.map((page) => ({
@@ -163,6 +168,10 @@ export default function QietiCutPage() {
         }));
         setPages(normalizedPages);
         setCurrentPageIndex(Number(cache.currentPageIndex) || 0);
+        if (typeof cache.mergeFragments === 'boolean') {
+          setMergeFragments(cache.mergeFragments);
+          mergeFragmentsRef.current = cache.mergeFragments;
+        }
         setHint(`已恢复本地缓存：${normalizedPages.length} 页`);
       }
     } catch {
@@ -174,7 +183,7 @@ export default function QietiCutPage() {
     try {
       localStorage.setItem(
         CACHE_KEY,
-        JSON.stringify({ pages, currentPageIndex }),
+        JSON.stringify({ pages, currentPageIndex, mergeFragments }),
       );
       cacheErrorShownRef.current = false;
     } catch (error) {
@@ -192,7 +201,7 @@ export default function QietiCutPage() {
         cacheErrorShownRef.current = true;
       }
     }
-  }, [pages, currentPageIndex, setHint]);
+  }, [pages, currentPageIndex, mergeFragments, setHint]);
 
   // ─── 云端快照防抖同步（失败不影响本地编辑）───────────────────────────
   useEffect(() => {
@@ -414,10 +423,12 @@ export default function QietiCutPage() {
                 cutQuestions(uploadedUrl),
               );
 
-              // 接口常把一题拆成「题干 + 各选项 + 答案」多条碎片，先按题干归并成题
-              const mergedQuestions = mergeCutApiEntries(
-                cutData?.questions_data?.questions || [],
-              );
+              // 接口常把一题拆成「题干 + 各选项 + 答案」多条碎片，默认按题干归并成题；
+              // 工具栏关闭「一题多框合并」时，每个碎片各自成题
+              const rawEntries = cutData?.questions_data?.questions || [];
+              const mergedQuestions = mergeFragmentsRef.current
+                ? mergeCutApiEntries(rawEntries)
+                : rawEntries;
 
               const questions = mergedQuestions
                 .map((question) => {
@@ -619,6 +630,26 @@ export default function QietiCutPage() {
     setHint('已清空');
   };
 
+  /** 切换「一题多框合并」：已有页面时需确认（重新识别会覆盖手动调整） */
+  const handleMergeToggle = (checked: boolean) => {
+    if (!pages.length) {
+      setMergeFragments(checked);
+      mergeFragmentsRef.current = checked;
+      return;
+    }
+    modal.confirm({
+      title: checked ? '开启一题多框合并' : '取消一题多框合并',
+      content: '切换后将重新自动识别，当前手动调整（画框/拖动/删除）会被覆盖，继续吗？',
+      okText: '继续',
+      cancelText: '取消',
+      onOk: () => {
+        setMergeFragments(checked);
+        mergeFragmentsRef.current = checked;
+        runAutoDetect();
+      },
+    });
+  };
+
   // ─── 划题交互（Konva 画布回调：选中/拖拽/缩放/画新框）───────────────
   const selectQuestion = (questionId: string, pageIndex: number) => {
     setActiveQuestionId(questionId);
@@ -666,17 +697,6 @@ export default function QietiCutPage() {
     setCurrentPageIndex(pageIndex);
   };
 
-  const requestDeleteQuestion = (questionId: string, no: number) => {
-    modal.confirm({
-      title: `确认删除第 ${no} 题吗？`,
-      content: '删除后不可恢复',
-      okText: '删除',
-      okButtonProps: { danger: true },
-      cancelText: '取消',
-      onOk: () => deleteQuestion(questionId),
-    });
-  };
-
   return (
     <PageContainer
       title="切题工作台"
@@ -701,6 +721,15 @@ export default function QietiCutPage() {
           >
             自动识别题目
           </Button>
+          <Space size={4} align="center">
+            <Switch
+              size="small"
+              checked={mergeFragments}
+              onChange={handleMergeToggle}
+              disabled={detecting}
+            />
+            <span className={styles.toolbarText}>一题多框合并</span>
+          </Space>
           <Popconfirm
             title="确认清空全部页面与题目？"
             okText="清空"
@@ -749,7 +778,6 @@ export default function QietiCutPage() {
                 onDeselectQuestion={deselectQuestion}
                 onChangeRect={updateQuestionRect}
                 onCreateQuestion={createQuestionFromRect}
-                onRequestDeleteQuestion={requestDeleteQuestion}
                 getPageImageSrc={getPageImageSrc}
               />
             )}
