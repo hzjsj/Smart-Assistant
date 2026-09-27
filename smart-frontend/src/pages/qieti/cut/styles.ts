@@ -52,6 +52,8 @@ export const useStyles = createStyles(({ token, css }) => ({
     background: ${token.colorBgContainer};
     padding: ${token.paddingSM};
     margin-bottom: ${token.margin};
+    /* 缩放放大时卡片随内容延展，横向滚动由 canvasWrap 承担 */
+    min-width: fit-content;
     &.active {
       border-color: ${token.colorPrimaryBorder};
     }

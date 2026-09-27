@@ -34,6 +34,10 @@ const LABEL_TEXT_ACTIVE = '#fff';
 interface KonvaPageStageProps {
   page: QietiPage;
   pageIndex: number;
+  /** 画布容器的可用宽度（适应宽度基准，1 倍缩放下的 Stage 宽度） */
+  baseWidth: number;
+  /** 用户缩放倍数（1 = 适应宽度），切题框随其实时等比更新 */
+  zoom: number;
   activeQuestionId: string | null;
   imageSrc: string;
   onSelectQuestion: (questionId: string, pageIndex: number) => void;
@@ -246,35 +250,25 @@ export default function KonvaPageStage({
   onDeselectQuestion,
   onChangeRect,
   onCreateQuestion,
+  baseWidth,
+  zoom = 1,
 }: KonvaPageStageProps) {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage>(null);
   const draftRef = useRef<DraftRect | null>(null);
-  const [stageWidth, setStageWidth] = useState(0);
   const [image, setImage] = useState<HTMLImageElement | null>(null);
   const [draft, setDraft] = useState<DraftRect | null>(null);
   // 悬停高亮按题联动：同题所有框一起高亮，与选中联动一致
   const [hoverQuestionId, setHoverQuestionId] = useState<string | null>(null);
 
+  // 缩放比 = 适应宽度基准比 × 用户缩放倍数；框/标签/草稿均随其实时等比更新
+  const stageWidth = baseWidth * zoom;
   const scale =
-    page.width > 0 && stageWidth > 0 ? stageWidth / page.width : 1;
+    page.width > 0 && stageWidth > 0 ? stageWidth / page.width : 0;
 
   const sortedQuestions = useMemo(
     () => page.questions.slice().sort((a, b) => a.no - b.no),
     [page.questions],
   );
-
-  // 容器宽度响应（ResizeObserver），驱动 Stage 整体缩放
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width;
-      if (width && width > 0) setStageWidth(width);
-    });
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
   // 背景图加载（dataURL / 远程 URL 均可）
   useEffect(() => {
@@ -350,10 +344,7 @@ export default function KonvaPageStage({
   }, [draft, finalizeDraft]);
 
   return (
-    <div
-      ref={wrapRef}
-      style={{ aspectRatio: `${page.width} / ${page.height}` }}
-    >
+    <div style={stageWidth > 0 ? { width: stageWidth } : undefined}>
       {stageWidth > 0 ? (
         <Stage
           ref={stageRef}
