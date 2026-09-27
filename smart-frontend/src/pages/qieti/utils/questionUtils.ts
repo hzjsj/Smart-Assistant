@@ -172,7 +172,7 @@ function posListToRect(posList: unknown): Rect | null {
   };
 }
 
-/** 生成 TOS 图片裁剪 URL（x-tos-process），用于无独立图片链接的插图 */
+/** 生成阿里云 OSS 图片裁剪 URL（x-oss-process），用于无独立图片链接的插图 */
 export function buildRemoteCropUrl(imageUrl: string, rect: Rect): string {
   const baseUrl = String(imageUrl || '').split('?')[0];
   if (!/^https?:\/\//.test(baseUrl)) return '';
@@ -180,7 +180,7 @@ export function buildRemoteCropUrl(imageUrl: string, rect: Rect): string {
   const y = Math.max(0, Math.floor(rect.y));
   const w = Math.max(1, Math.floor(rect.w));
   const h = Math.max(1, Math.floor(rect.h));
-  const process = `x-tos-process=image/bright,0/contrast,0/crop,w_${w},h_${h},g_nw,x_${x},y_${y}/rotate,0`;
+  const process = `x-oss-process=image/crop,w_${w},h_${h},x_${x},y_${y}`;
   return `${baseUrl}?${process}`;
 }
 

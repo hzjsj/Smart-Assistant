@@ -2,7 +2,7 @@
 
 迁移自 hwwh-manage-backend 切题模块（原为腾讯 CloudBase 集合），按本项目
 约定适配：新表继承 TimestampMixin；快照 payload 用 MEDIUMTEXT（含 dataURL
-页图，MySQL TEXT 64KB 会截断）。
+页图，MySQL TEXT 64KB 会截断）；题图存阿里云 OSS kdsa 桶（公共读）。
 """
 from sqlalchemy import Column, Integer, String, Text
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
@@ -19,7 +19,7 @@ class QietiUploadRecord(TimestampMixin, Base):
     file_name = Column(String(500), nullable=False, default="", comment="文件名")
     file_type = Column(String(100), nullable=False, default="", comment="MIME 类型")
     file_size = Column(Integer, nullable=False, default=0, comment="文件大小(字节)")
-    uploaded_url = Column(String(1000), nullable=False, default="", comment="TOS 公网地址")
+    uploaded_url = Column(String(1000), nullable=False, default="", comment="OSS 公网地址")
 
 
 class QietiSnapshot(TimestampMixin, Base):

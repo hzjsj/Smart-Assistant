@@ -20,7 +20,7 @@ from qieti.schemas import (
     SnapshotPayload,
     SnapshotSaveResponse,
 )
-from qieti.service import cut_questions, is_tos_configured, upload_image_to_tos
+from qieti.service import cut_questions, is_oss_configured, upload_image_to_oss
 from utils.url_guard import validate_public_url
 
 router = APIRouter(prefix="/api/qieti", tags=["切题"], dependencies=[Depends(get_current_user)])
@@ -38,7 +38,7 @@ def _get_primary_rect(question: dict):
 
 
 def _build_crop_url(image_url: str, rect: dict | None) -> str:
-    """基于 TOS 图片处理参数生成题目裁剪图 URL（x-tos-process）。"""
+    """基于阿里云 OSS 图片处理参数生成题目裁剪图 URL（x-oss-process）。"""
     if not _is_http_url(image_url) or not rect:
         return ""
     base_url = str(image_url).split("?")[0]
@@ -46,7 +46,7 @@ def _build_crop_url(image_url: str, rect: dict | None) -> str:
     y = max(0, math.floor(float(rect.get("y") or 0)))
     w = max(1, math.floor(float(rect.get("w") or 0)))
     h = max(1, math.floor(float(rect.get("h") or 0)))
-    process = f"x-tos-process=image/crop,w_{w},h_{h},g_nw,x_{x},y_{y}"
+    process = f"x-oss-process=image/crop,w_{w},h_{h},x_{x},y_{y}"
     return f"{base_url}?{process}"
 
 
@@ -138,14 +138,14 @@ def _normalize_snapshot_payload(payload: dict) -> dict:
 
 @router.post("/upload")
 async def upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """上传切题图片到 TOS，并写入上传记录。响应结构与参考项目 /api/upload/single 一致。"""
-    if not is_tos_configured():
-        raise HTTPException(status_code=500, detail="TOS 未配置。请设置 TOS_AK / TOS_SK 环境变量")
+    """上传切题图片到 OSS，并写入上传记录。响应结构与参考项目 /api/upload/single 一致。"""
+    if not is_oss_configured():
+        raise HTTPException(status_code=500, detail="OSS 未配置。请设置 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET / OSS_BUCKET 环境变量")
 
     try:
         content = await file.read()
         result = await asyncio.to_thread(
-            upload_image_to_tos,
+            upload_image_to_oss,
             content,
             file.filename or "upload.jpg",
             file.content_type or "",

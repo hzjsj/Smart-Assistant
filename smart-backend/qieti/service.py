@@ -1,7 +1,8 @@
-"""切题模块外部服务：火山引擎 TOS 上传 + 阿里云 EduTutor 切题识别。
+"""切题模块外部服务：阿里云 OSS 题图存储 + 阿里云 EduTutor 切题识别。
 
-移植自参考项目 20260820project_GfrGj（volcengine/upload_file_tos.py 与
-timu/cut_questions.py），AK/SK 从硬编码改为环境变量注入。
+切题识别移植自参考项目 20260820project_GfrGj（timu/cut_questions.py），
+AK/SK 从硬编码改为环境变量注入；题图存储复用本项目 utils/oss_upload.py
+（读 OSS_* 环境变量，公共读桶直接拼公网 URL）。
 """
 import asyncio
 import json
@@ -15,51 +16,39 @@ def _env(key: str, default: str = "") -> str:
     return (os.getenv(key) or default).strip()
 
 
-# ─── 火山引擎 TOS（题图对象存储）────────────────────────────────────────
+# ─── 阿里云 OSS（题图对象存储，桶 kdsa / cn-shanghai，公共读）────────────
 
-def is_tos_configured() -> bool:
-    return bool(_env("TOS_AK") and _env("TOS_SK"))
+def is_oss_configured() -> bool:
+    return bool(_env("OSS_BUCKET") and _env("OSS_ACCESS_KEY_ID") and _env("OSS_ACCESS_KEY_SECRET"))
 
 
 def _build_object_key(filename: str) -> str:
-    """对象键：uploads/<YYYYMMDDHHMMSS>/<原文件名>（参考项目的时间戳目录约定）。"""
+    """对象键：qieti/<YYYYMMDDHHMMSS>/<原文件名>（kdsa 为多功能共享桶，qieti 前缀区分归属）。"""
     safe_name = os.path.basename(filename or "upload.jpg").replace("\\", "/").strip() or "upload.jpg"
     timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    return f"uploads/{timestamp}/{safe_name}"
+    return f"qieti/{timestamp}/{safe_name}"
 
 
-def upload_image_to_tos(content: bytes, filename: str, content_type: str = "") -> dict:
-    """上传图片字节流到 TOS，返回 {success, filename, content_type, size, message, url}。
+def upload_image_to_oss(content: bytes, filename: str, content_type: str = "") -> dict:
+    """上传图片字节流到 OSS，返回 {success, filename, content_type, size, message, url}。
 
-    同步实现（TOS SDK 为同步客户端），由 router 用 asyncio.to_thread 调用。
+    同步实现（复用 utils/oss_upload 的 v2 客户端），由 router 用 asyncio.to_thread 调用。
     """
-    if not is_tos_configured():
+    if not is_oss_configured():
         raise HTTPException(
             status_code=500,
-            detail="TOS 未配置。请设置 TOS_AK / TOS_SK 环境变量",
+            detail="OSS 未配置。请设置 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET / OSS_BUCKET 环境变量",
         )
 
-    import tos  # 延迟导入：未安装/未配置不影响其他模块启动
-
-    ak = _env("TOS_AK")
-    sk = _env("TOS_SK")
-    endpoint = _env("TOS_ENDPOINT", "tos-cn-beijing.volces.com")
-    region = _env("TOS_REGION", "cn-beijing")
-    bucket = _env("TOS_BUCKET", "hwwh")
-    bucket_domain = _env("TOS_BUCKET_DOMAIN", f"https://{bucket}.{endpoint}")
+    from utils.oss_upload import upload_bytes_to_oss
 
     object_key = _build_object_key(filename)
     try:
-        client = tos.TosClientV2(ak, sk, endpoint, region)
-        client.put_object(bucket, object_key, content=content)
-    except tos.exceptions.TosServerError as e:
-        raise HTTPException(status_code=502, detail=f"TOS 服务端错误: {e.message} (request_id={e.request_id})")
-    except tos.exceptions.TosClientError as e:
-        raise HTTPException(status_code=502, detail=f"TOS 客户端错误: {e.message}")
+        result = upload_bytes_to_oss(content, object_key)
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"TOS 上传失败: {e}")
+        raise HTTPException(status_code=502, detail=f"OSS 上传失败: {e}")
 
     return {
         "success": True,
@@ -67,7 +56,7 @@ def upload_image_to_tos(content: bytes, filename: str, content_type: str = "") -
         "content_type": content_type,
         "size": len(content),
         "message": "File uploaded successfully",
-        "url": f"{bucket_domain}/{object_key}",
+        "url": result["url"],
     }
 
 
