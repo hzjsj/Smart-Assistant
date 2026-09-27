@@ -18,6 +18,7 @@ const LABEL_HEIGHT = 20;
 const LABEL_BASE_WIDTH = 40;
 const LABEL_MULTI_SUFFIX_WIDTH = 16;
 const LABEL_DELETE_WIDTH = 16;
+const LABEL_PADDING = 6;
 const LABEL_FONT_SIZE = 12;
 const LABEL_FONT_FAMILY = 'Arial';
 const LABEL_FONT_WEIGHT = '500';
@@ -188,15 +189,15 @@ function QuestionRectShape({
             cornerRadius={[0, 0, 4, 4]}
             fill={isActive ? LABEL_BG_ACTIVE : LABEL_BG}
           />
+          {/* 文字定位照搬原型：x/y = LABEL_STYLE.padding，且不设 width/height
+              （原型里的 align/verticalAlign 因此并不生效，实际是 6px 左对齐） */}
           <Text
-            width={labelWidth - (hasDelete ? LABEL_DELETE_WIDTH : 0)}
-            height={LABEL_HEIGHT}
+            x={LABEL_PADDING}
+            y={LABEL_PADDING}
             text={labelText}
             fontSize={LABEL_FONT_SIZE}
             fontFamily={LABEL_FONT_FAMILY}
             fontStyle={LABEL_FONT_WEIGHT}
-            align="center"
-            verticalAlign="middle"
             fill={isActive ? LABEL_TEXT_ACTIVE : LABEL_TEXT}
             listening={false}
           />
