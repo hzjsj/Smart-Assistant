@@ -29,6 +29,8 @@ import {
   ensureQuestionRects,
   getQuestionPrimaryRect,
   getQuestionRects,
+  mapApiQuestionType,
+  mergeCutApiEntries,
   normalizeQuestionInfo,
   normalizeQuestionShape,
   rectsFromPosList,
@@ -412,14 +414,19 @@ export default function QietiCutPage() {
                 cutQuestions(uploadedUrl),
               );
 
-              const questions = (cutData?.questions_data?.questions || [])
+              // 接口常把一题拆成「题干 + 各选项 + 答案」多条碎片，先按题干归并成题
+              const mergedQuestions = mergeCutApiEntries(
+                cutData?.questions_data?.questions || [],
+              );
+
+              const questions = mergedQuestions
                 .map((question) => {
                   const rects = rectsFromPosList(question?.pos_list, page);
                   if (!rects.length) return null;
                   return normalizeQuestionShape({
                     id: createId(),
                     no: 0,
-                    type: QUESTION_TYPES[0],
+                    type: mapApiQuestionType(question?.info?.type),
                     rect: rects[0],
                     rects,
                     subImages: Array.isArray(question?.sub_images)

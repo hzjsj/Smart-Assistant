@@ -59,10 +59,14 @@ export interface CutApiQuestion {
   sub_images?: string[];
   merged_image?: string;
   info?: {
-    stem?: { text?: string };
-    option?: { text?: string }[];
+    stem?: { text?: string; pos_list?: number[][] };
+    option?: { text?: string; pos_list?: number[][] }[];
     subquestion?: unknown[];
     figure?: unknown;
+    /** 题目类型：选择题/填空题/判断题/问答题/作文题/其他 */
+    type?: string;
+    /** 答案信息（文本 + 位置） */
+    answer?: { text?: string; pos_list?: number[][] }[];
   };
 }
 

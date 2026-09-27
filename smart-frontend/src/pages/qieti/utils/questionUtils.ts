@@ -1,4 +1,4 @@
-import { MIN_SIZE } from '../constants';
+import { MIN_SIZE, QUESTION_TYPES } from '../constants';
 import type { CutApiQuestion, QietiPage, QietiQuestion, Rect } from '../data';
 
 export function createId(): string {
@@ -228,6 +228,90 @@ export function normalizeQuestionInfo(
       .filter(Boolean)
       .join('\n'),
   };
+}
+
+// ─── 切题接口题目类型 / 碎片条目归并 ──────────────────────────────────
+
+/** EduTutor 题型 → 本项目题型（接口不区分单选/多选，选择题统一为单选题） */
+const API_TYPE_MAP: Record<string, string> = {
+  选择题: '单选题',
+  填空题: '填空题',
+  判断题: '判断题',
+  问答题: '简答题',
+  作文题: '简答题',
+};
+
+function apiTypeKey(apiType: unknown): string {
+  return normalizeText(apiType).trim();
+}
+
+function isKnownApiType(apiType: unknown): boolean {
+  return apiTypeKey(apiType) in API_TYPE_MAP;
+}
+
+/** 接口题型 → 本项目题型；「其他」/未知回退到默认题型 */
+export function mapApiQuestionType(apiType: unknown): string {
+  return API_TYPE_MAP[apiTypeKey(apiType)] ?? QUESTION_TYPES[0];
+}
+
+function toFigureArray(value: unknown): unknown[] {
+  if (value === undefined || value === null) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+type CutApiInfo = NonNullable<CutApiQuestion['info']>;
+
+function mergeCutApiInfo(target: CutApiInfo, source: CutApiInfo): void {
+  if (!normalizeText(target.stem?.text) && normalizeText(source.stem?.text)) {
+    target.stem = source.stem;
+  }
+  target.option = [...(target.option ?? []), ...(source.option ?? [])];
+  target.answer = [...(target.answer ?? []), ...(source.answer ?? [])];
+  target.subquestion = [
+    ...(target.subquestion ?? []),
+    ...(source.subquestion ?? []),
+  ];
+  target.figure = [...toFigureArray(target.figure), ...toFigureArray(source.figure)];
+  if (!isKnownApiType(target.type) && isKnownApiType(source.type)) {
+    target.type = source.type;
+  }
+}
+
+/**
+ * 归并 EduTutor 的碎片条目：带题干的条目开启新题，无题干者（选项/答案碎片）
+ * 归入前一题。真实返回常把一题拆成「题干 + 各选项 + 答案」多条，
+ * 不归并会在页面上碎成几十个框、题号乱跳。
+ * 注：无题干且无前序题目的条目（如跨页续排的选项）会自成一组。
+ */
+export function mergeCutApiEntries(entries: CutApiQuestion[]): CutApiQuestion[] {
+  const merged: CutApiQuestion[] = [];
+
+  for (const entry of entries) {
+    if (!entry) continue;
+    const hasStem = Boolean(normalizeText(entry.info?.stem?.text).trim());
+    const target =
+      hasStem || !merged.length ? null : merged[merged.length - 1];
+
+    if (!target) {
+      merged.push({
+        pos_list: [...(entry.pos_list ?? [])],
+        sub_images: [...(entry.sub_images ?? [])],
+        merged_image: entry.merged_image,
+        info: structuredClone(entry.info ?? {}),
+      });
+      continue;
+    }
+
+    target.pos_list = [...(target.pos_list ?? []), ...(entry.pos_list ?? [])];
+    target.sub_images = [
+      ...(target.sub_images ?? []),
+      ...(entry.sub_images ?? []),
+    ];
+    if (!target.merged_image) target.merged_image = entry.merged_image;
+    mergeCutApiInfo(target.info as CutApiInfo, (entry.info ?? {}) as CutApiInfo);
+  }
+
+  return merged;
 }
 
 /** pos_list 多边形 → 页面坐标系内的矩形（clamp 到页面边界，保证最小尺寸） */
