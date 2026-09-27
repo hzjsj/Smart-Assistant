@@ -6,11 +6,15 @@ export const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     flex-direction: column;
     gap: ${token.margin};
-    /* 去掉页头后几乎占满视口（顶部导航 56 + 布局上下留白 48） */
-    height: calc(100vh - 104px);
+    /* 抵消 ProLayout 内容区内边距（上32/左右40/下32），本页自控 12px 呼吸边距，
+       画布空间最大化；仅作用于本页，不影响其他页面 */
+    margin: -32px -40px -32px;
+    padding: 12px 4px;
+    /* 56 顶部导航 + 12 下留白（盒内另有 12px padding 与四周一致） */
+    height: calc(100vh - 56px);
     min-height: 480px;
     /* 为右侧 Win10 导航栏腾出空间（随收起/展开平滑过渡） */
-    padding-right: var(--qieti-nav-w, 0px);
+    padding-right: calc(4px + var(--qieti-nav-w, 0px));
     transition: padding-right 0.25s ease;
   `,
   splitter: css`

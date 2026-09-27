@@ -15,7 +15,8 @@ import KonvaPageStage from './KonvaPageStage';
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
 const ZOOM_STEP = 0.25;
-const ZOOM_WHEEL_STEP = 0.1;
+/** Ctrl+滚轮步进：每次精确调整 1% */
+const ZOOM_WHEEL_STEP = 0.01;
 
 interface PageViewerProps {
   pages: QietiPage[];
