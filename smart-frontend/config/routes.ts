@@ -98,6 +98,11 @@ export default [
         path: '/qieti/records',
         component: './qieti/records',
       },
+      {
+        name: '原型预览',
+        path: '/qieti/preview',
+        component: './qieti/preview',
+      },
     ],
   },
   {
