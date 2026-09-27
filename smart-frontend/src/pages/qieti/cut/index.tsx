@@ -6,7 +6,15 @@ import {
 } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import { Link } from '@umijs/max';
-import { Alert, App, Button, Popconfirm, Space, Switch } from 'antd';
+import {
+  Alert,
+  App,
+  Button,
+  Popconfirm,
+  Space,
+  Splitter,
+  Switch,
+} from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CACHE_KEY,
@@ -761,34 +769,38 @@ export default function QietiCutPage() {
             onClose={() => setUploadHint('')}
           />
         ) : null}
-        <div className={styles.workbenchRow}>
-          <div className={styles.leftPanel}>
-            {!pages.length ? (
-              <UploadCard onHandleFiles={handleFiles} />
-            ) : (
-              <PageViewer
-                pages={pages}
-                currentPageIndex={currentPageIndex}
-                onSwitchPage={switchPage}
-                onSelectPage={setCurrentPageIndex}
-                pageSectionRefs={pageSectionRefs}
-                thumbRefs={thumbRefs}
-                activeQuestionId={activeQuestionId}
-                onSelectQuestion={selectQuestion}
-                onDeselectQuestion={deselectQuestion}
-                onChangeRect={updateQuestionRect}
-                onCreateQuestion={createQuestionFromRect}
-                getPageImageSrc={getPageImageSrc}
-              />
-            )}
-          </div>
-          <QuestionList
-            questionPreviewList={questionPreviewList}
-            activeQuestionId={activeQuestionId}
-            onLocateQuestion={locateQuestion}
-            onDeleteQuestion={deleteQuestion}
-          />
-        </div>
+        <Splitter className={styles.splitter}>
+          <Splitter.Panel min="30%" max="80%">
+            <div className={styles.leftPanel}>
+              {!pages.length ? (
+                <UploadCard onHandleFiles={handleFiles} />
+              ) : (
+                <PageViewer
+                  pages={pages}
+                  currentPageIndex={currentPageIndex}
+                  onSwitchPage={switchPage}
+                  onSelectPage={setCurrentPageIndex}
+                  pageSectionRefs={pageSectionRefs}
+                  thumbRefs={thumbRefs}
+                  activeQuestionId={activeQuestionId}
+                  onSelectQuestion={selectQuestion}
+                  onDeselectQuestion={deselectQuestion}
+                  onChangeRect={updateQuestionRect}
+                  onCreateQuestion={createQuestionFromRect}
+                  getPageImageSrc={getPageImageSrc}
+                />
+              )}
+            </div>
+          </Splitter.Panel>
+          <Splitter.Panel min={280} max="60%" defaultSize={420}>
+            <QuestionList
+              questionPreviewList={questionPreviewList}
+              activeQuestionId={activeQuestionId}
+              onLocateQuestion={locateQuestion}
+              onDeleteQuestion={deleteQuestion}
+            />
+          </Splitter.Panel>
+        </Splitter>
       </div>
     </PageContainer>
   );

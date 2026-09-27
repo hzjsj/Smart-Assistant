@@ -9,14 +9,12 @@ export const useStyles = createStyles(({ token, css }) => ({
     height: calc(100vh - 216px);
     min-height: 480px;
   `,
-  workbenchRow: css`
+  splitter: css`
     flex: 1;
     min-height: 0;
-    display: flex;
-    gap: ${token.margin};
   `,
   leftPanel: css`
-    flex: 1;
+    height: 100%;
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -107,8 +105,7 @@ export const useStyles = createStyles(({ token, css }) => ({
     }
   `,
   rightPanel: css`
-    width: 420px;
-    flex-shrink: 0;
+    width: 100%;
     height: 100%;
     display: flex;
     flex-direction: column;
