@@ -15,7 +15,7 @@ import {
   PDF_MAX_SIZE,
   QUESTION_TYPES,
 } from '../constants';
-import type { QietiPage } from '../data';
+import type { QietiPage, Rect } from '../data';
 import { cutQuestions, saveSnapshot, uploadImage } from '../service';
 import { createRequestScheduler, downloadTextFile } from '../utils/exportUtils';
 import {
@@ -26,6 +26,7 @@ import {
 } from '../utils/fileUtils';
 import {
   createId,
+  ensureQuestionRects,
   getQuestionPrimaryRect,
   getQuestionRects,
   normalizeQuestionInfo,
@@ -33,12 +34,12 @@ import {
   rectsFromPosList,
   reindexQuestions,
   serializeRect,
+  syncQuestionRect,
   toPercentRect,
 } from '../utils/questionUtils';
 import PageViewer from './components/PageViewer';
 import QuestionList from './components/QuestionList';
 import UploadCard from './components/UploadCard';
-import { useRectInteraction } from './hooks/useRectInteraction';
 import { useStyles } from './styles';
 
 let pdfjsLibRef: unknown = null;
@@ -59,10 +60,9 @@ async function loadPdfJs() {
 }
 
 export default function QietiCutPage() {
-  const { message } = App.useApp();
+  const { message, modal } = App.useApp();
   const { styles } = useStyles();
 
-  const pageImageRefs = useRef<(HTMLImageElement | null)[]>([]);
   const pageSectionRefs = useRef<(HTMLElement | null)[]>([]);
   const thumbRefs = useRef<(HTMLElement | null)[]>([]);
   const pagesRef = useRef<QietiPage[]>([]);
@@ -72,7 +72,6 @@ export default function QietiCutPage() {
   >(null);
   const initializedFromUrlRef = useRef(false);
   const cacheErrorShownRef = useRef(false);
-  const [, setLayoutTick] = useState(0);
 
   const [pages, setPages] = useState<QietiPage[]>([]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
@@ -613,22 +612,68 @@ export default function QietiCutPage() {
     setHint('已清空');
   };
 
-  // ─── 划题交互（画框/移动/缩放）──────────────────────────────────────
-  const { handleOverlayMouseDown } = useRectInteraction({
-    pagesRef,
-    pageImageRefs,
-    setPages,
-    onActiveChange: (questionId, pageIndex) => {
-      setActiveQuestionId(questionId);
-      setCurrentPageIndex(pageIndex);
-    },
-    nextQuestionNo,
-  });
+  // ─── 划题交互（Konva 画布回调：选中/拖拽/缩放/画新框）───────────────
+  const selectQuestion = (questionId: string, pageIndex: number) => {
+    setActiveQuestionId(questionId);
+    setCurrentPageIndex(pageIndex);
+  };
+
+  const deselectQuestion = () => setActiveQuestionId(null);
+
+  const updateQuestionRect = (
+    pageIndex: number,
+    questionId: string,
+    rectIndex: number,
+    rect: Rect,
+  ) => {
+    setPages((prev) => {
+      const next = structuredClone(prev);
+      const page = next[pageIndex];
+      const q = page?.questions.find((item) => item.id === questionId);
+      if (!q) return prev;
+      const rects = ensureQuestionRects(q);
+      if (!rects[rectIndex]) return prev;
+      rects[rectIndex] = { ...rect };
+      syncQuestionRect(q);
+      return next;
+    });
+  };
+
+  const createQuestionFromRect = (pageIndex: number, rect: Rect) => {
+    const id = createId();
+    setPages((prev) => {
+      const next = structuredClone(prev);
+      if (!next[pageIndex]) return prev;
+      next[pageIndex].questions.push(
+        normalizeQuestionShape({
+          id,
+          no: nextQuestionNo(),
+          type: QUESTION_TYPES[0],
+          rect: { ...rect },
+          rects: [{ ...rect }],
+        }),
+      );
+      return next;
+    });
+    setActiveQuestionId(id);
+    setCurrentPageIndex(pageIndex);
+  };
+
+  const requestDeleteQuestion = (questionId: string, no: number) => {
+    modal.confirm({
+      title: `确认删除第 ${no} 题吗？`,
+      content: '删除后不可恢复',
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: () => deleteQuestion(questionId),
+    });
+  };
 
   return (
     <PageContainer
       title="切题工作台"
-      subtitle="上传试卷 PDF / 图片，自动或手动框选切题"
+      subTitle="上传试卷 PDF / 图片，自动或手动框选切题"
       extra={
         <Space wrap>
           <Link to="/qieti/questions">题目列表</Link>
@@ -690,13 +735,14 @@ export default function QietiCutPage() {
                 currentPageIndex={currentPageIndex}
                 onSwitchPage={switchPage}
                 onSelectPage={setCurrentPageIndex}
-                pageImageRefs={pageImageRefs}
                 pageSectionRefs={pageSectionRefs}
                 thumbRefs={thumbRefs}
-                onImageLoad={() => setLayoutTick((v) => v + 1)}
                 activeQuestionId={activeQuestionId}
-                onOverlayMouseDown={handleOverlayMouseDown}
-                onDeleteQuestion={deleteQuestion}
+                onSelectQuestion={selectQuestion}
+                onDeselectQuestion={deselectQuestion}
+                onChangeRect={updateQuestionRect}
+                onCreateQuestion={createQuestionFromRect}
+                onRequestDeleteQuestion={requestDeleteQuestion}
                 getPageImageSrc={getPageImageSrc}
               />
             )}
