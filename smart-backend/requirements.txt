@@ -15,3 +15,6 @@ python-docx>=1.2.0
 pillow>=10.0.0
 lxml>=5.0.0
 requests>=2.28.0
+# ─── 切题模块（qieti）───────────────────────────────────────────────
+tos>=2.8.4
+alibabacloud-edututor20250707>=1.0.0

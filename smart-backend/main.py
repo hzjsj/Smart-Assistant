@@ -13,12 +13,14 @@ from users.models import User, UserSession
 from chat.models import ChatSession, ChatMessage
 from documents.models import FileRecord
 from generate_test_paper.models import Exam, CourseType, KnowledgePoint, QuestionType
+from qieti.models import QietiUploadRecord, QietiSnapshot
 from users.router import router as users_router
 from chat.router import router as chat_router
 from documents.router import router as documents_router
 from oss.router import router as oss_router
 from mineru.router import router as mineru_router
 from generate_test_paper.router import router as generate_test_paper_router
+from qieti.router import router as qieti_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -49,3 +51,4 @@ app.include_router(documents_router)
 app.include_router(oss_router)
 app.include_router(mineru_router)
 app.include_router(generate_test_paper_router)
+app.include_router(qieti_router)
