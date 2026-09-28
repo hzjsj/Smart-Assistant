@@ -3,15 +3,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Group,
   Image as KonvaImage,
-  Layer,
   Rect as KonvaRect,
+  Layer,
   Stage,
   Text,
   Transformer,
 } from 'react-konva';
 import { MIN_SIZE } from '../../constants';
 import type { QietiPage, QietiQuestion, Rect } from '../../data';
-import { clamp, getQuestionRects, normalizedRect } from '../../utils/questionUtils';
+import {
+  clamp,
+  getQuestionRects,
+  normalizedRect,
+} from '../../utils/questionUtils';
 
 /** 题号标签样式（对齐 test/qieti 原型 LABEL_STYLE，尺寸为 css px，经反缩放保持视觉恒定） */
 const LABEL_HEIGHT = 20;
@@ -107,10 +111,15 @@ function QuestionRectShape({
     }
   }, [isActive]);
 
-  const setCursor = (
-    e: Konva.KonvaEventObject<MouseEvent>,
-    cursor: string,
-  ) => {
+  // Transformer 以绝对（屏幕）坐标缓存节点矩形；缩放改变 Stage scale 后其缓存
+  // 不会自动重算，锚点会停留在旧位置，需主动 forceUpdate
+  useEffect(() => {
+    if (isActive && trRef.current) {
+      trRef.current.forceUpdate();
+    }
+  }, [isActive, scale]);
+
+  const setCursor = (e: Konva.KonvaEventObject<MouseEvent>, cursor: string) => {
     const stage = e.target.getStage();
     if (stage) stage.container().style.cursor = cursor;
   };
@@ -147,8 +156,7 @@ function QuestionRectShape({
 
   // 标签宽度与选中态无关（对齐原型：选中仅变配色，不加宽）
   const labelWidth =
-    LABEL_BASE_WIDTH +
-    (rectsCount > 1 ? LABEL_MULTI_SUFFIX_WIDTH : 0);
+    LABEL_BASE_WIDTH + (rectsCount > 1 ? LABEL_MULTI_SUFFIX_WIDTH : 0);
   const labelText = `${question.no}题${rectsCount > 1 ? ` (${rectIndex + 1})` : ''}`;
   // canvas 会裁剪出界绘制：标签默认悬于框上方，贴近页面顶部时回落到 y=0 防裁剪
   const labelLocalY =
@@ -185,7 +193,11 @@ function QuestionRectShape({
           width={rect.w}
           height={rect.h}
           fill={
-            isActive ? RECT_FILL_ACTIVE : isHovered ? RECT_FILL_HOVER : 'transparent'
+            isActive
+              ? RECT_FILL_ACTIVE
+              : isHovered
+                ? RECT_FILL_HOVER
+                : 'transparent'
           }
           stroke={RECT_STROKE}
           strokeWidth={1}
@@ -224,10 +236,12 @@ function QuestionRectShape({
           flipEnabled={false}
           keepRatio={false}
           rotateEnabled={false}
-          // 锚点视觉尺寸对齐原型（Konva 默认 10px 白底蓝边、1px 描边），按 scale 反算
-          anchorSize={10 / scale}
-          anchorStrokeWidth={1 / scale}
-          borderStrokeWidth={1 / scale}
+          // Konva 10 的 Transformer 在绝对（屏幕）坐标系绘制，锚点不吃 Stage 缩放
+          // （见其 getAbsoluteTransform 重写），直接给 css px 即可视觉恒定；
+          // 除以 scale 反而是二次补偿，源图越大（scale 越小）锚点越大
+          anchorSize={10}
+          anchorStrokeWidth={1}
+          borderStrokeWidth={1}
           boundBoxFunc={(oldBox, newBox) =>
             Math.abs(newBox.width) < MIN_SIZE * scale ||
             Math.abs(newBox.height) < MIN_SIZE * scale
@@ -262,8 +276,7 @@ export default function KonvaPageStage({
 
   // 缩放比 = 适应宽度基准比 × 用户缩放倍数；框/标签/草稿均随其实时等比更新
   const stageWidth = baseWidth * zoom;
-  const scale =
-    page.width > 0 && stageWidth > 0 ? stageWidth / page.width : 0;
+  const scale = page.width > 0 && stageWidth > 0 ? stageWidth / page.width : 0;
 
   const sortedQuestions = useMemo(
     () => page.questions.slice().sort((a, b) => a.no - b.no),
@@ -324,12 +337,7 @@ export default function KonvaPageStage({
     draftRef.current = null;
     setDraft(null);
     if (!current) return;
-    const rect = normalizedRect(
-      current.x1,
-      current.y1,
-      current.x2,
-      current.y2,
-    );
+    const rect = normalizedRect(current.x1, current.y1, current.x2, current.y2);
     if (rect.w >= MIN_SIZE && rect.h >= MIN_SIZE) {
       onCreateQuestion(pageIndex, rect);
     }
