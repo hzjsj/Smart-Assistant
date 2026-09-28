@@ -232,6 +232,21 @@ export default function PageViewer({
               className={styles.pageInput}
             />
             <span className={styles.headText}>/ {pages.length} 页</span>
+            <Divider type="vertical" style={{ height: 16 }} />
+            <Button
+              size="small"
+              onClick={() => onSwitchPage(currentPageIndex - 1)}
+              disabled={currentPageIndex <= 0}
+            >
+              上一页
+            </Button>
+            <Button
+              size="small"
+              onClick={() => onSwitchPage(currentPageIndex + 1)}
+              disabled={currentPageIndex >= pages.length - 1}
+            >
+              下一页
+            </Button>
             <Progress
               percent={(previewPage / pages.length) * 100}
               showInfo={false}
@@ -267,21 +282,6 @@ export default function PageViewer({
             disabled={zoom >= ZOOM_MAX || !pages.length}
             onClick={() => applyZoom(zoomRef.current + ZOOM_STEP)}
           />
-          <Divider type="vertical" style={{ height: 16 }} />
-          <Button
-            size="small"
-            onClick={() => onSwitchPage(currentPageIndex - 1)}
-            disabled={currentPageIndex <= 0}
-          >
-            上一页
-          </Button>
-          <Button
-            size="small"
-            onClick={() => onSwitchPage(currentPageIndex + 1)}
-            disabled={currentPageIndex >= pages.length - 1}
-          >
-            下一页
-          </Button>
         </Space>
       }
     >
