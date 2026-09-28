@@ -1,4 +1,4 @@
-import { Button, Empty, Tag } from 'antd';
+import { Button, Card, Empty, Space, Tag } from 'antd';
 import {
   memo,
   useDeferredValue,
@@ -207,8 +207,27 @@ export default function QuestionList({
   );
 
   return (
-    <aside className={styles.rightPanel}>
-      <div className={styles.panelTitle}>题目列表（{total} 题）</div>
+    <Card
+      size="small"
+      className={styles.rightPanel}
+      styles={{
+        body: {
+          padding: 0,
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        },
+      }}
+      title={
+        <Space size={8}>
+          <span>题目列表</span>
+          <Tag color="processing" style={{ marginInlineEnd: 0 }}>
+            {total} 题
+          </Tag>
+        </Space>
+      }
+    >
       <div
         className={styles.questionList}
         ref={listRef}
@@ -237,6 +256,6 @@ export default function QuestionList({
           <div style={{ height: bottomSpacer }} aria-hidden="true" />
         ) : null}
       </div>
-    </aside>
+    </Card>
   );
 }

@@ -4,7 +4,15 @@ import {
   ZoomInOutlined,
   ZoomOutOutlined,
 } from '@ant-design/icons';
-import { Button, Space, Tooltip } from 'antd';
+import {
+  Button,
+  Card,
+  Divider,
+  Progress,
+  Space,
+  InputNumber,
+  Tooltip,
+} from 'antd';
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -60,6 +68,28 @@ export default function PageViewer({
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const [baseWidth, setBaseWidth] = useState(0);
   const zoomRef = useRef(1);
+  /** 页码输入框的值（回车/失焦时提交跳转） */
+  const [pageInput, setPageInput] = useState(1);
+  /** 输入框的实时预览页（clamp 后），供进度条即时反馈 */
+  const previewPage = Math.min(
+    Math.max(Math.round(Number(pageInput) || 1), 1),
+    Math.max(1, pages.length),
+  );
+
+  /** 回车/失焦提交：clamp 后跳转对应页（渲染 + 滚动定位） */
+  const commitPageJump = useCallback(() => {
+    const target = Math.min(
+      Math.max(Math.round(Number(pageInput) || 1), 1),
+      Math.max(1, pages.length),
+    );
+    setPageInput(target);
+    if (target !== currentPageIndex + 1) onSwitchPage(target - 1);
+  }, [pageInput, pages.length, currentPageIndex, onSwitchPage]);
+
+  // 外部翻页（按钮/缩略图/列表定位）时同步输入框显示
+  useEffect(() => {
+    setPageInput(currentPageIndex + 1);
+  }, [currentPageIndex]);
   const zoomAnchorRef = useRef<{
     sx: number;
     sy: number;
@@ -174,18 +204,47 @@ export default function PageViewer({
   }, [currentPageIndex, thumbRefs]);
 
   return (
-    <div className={styles.viewerCard}>
-      <div className={styles.viewerHead}>
-        <span>
-          {pages.length ? (
-            <>
-              当前第 <b>{currentPageIndex + 1}</b> / {pages.length} 页
-            </>
-          ) : (
-            '未加载文件'
-          )}
-        </span>
-        <Space size="small" wrap>
+    <Card
+      size="small"
+      className={styles.viewerCard}
+      styles={{
+        body: {
+          padding: 0,
+          flex: 1,
+          minHeight: 0,
+          display: 'flex',
+          flexDirection: 'column',
+        },
+      }}
+      title={
+        pages.length ? (
+          <Space size={6}>
+            <span className={styles.headText}>第</span>
+            <InputNumber
+              size="small"
+              min={1}
+              max={pages.length}
+              controls={false}
+              value={pageInput}
+              onChange={(v) => setPageInput(Number(v) || 1)}
+              onPressEnter={() => commitPageJump()}
+              onBlur={() => commitPageJump()}
+              className={styles.pageInput}
+            />
+            <span className={styles.headText}>/ {pages.length} 页</span>
+            <Progress
+              percent={(previewPage / pages.length) * 100}
+              showInfo={false}
+              size={[72, 4]}
+              status="normal"
+            />
+          </Space>
+        ) : (
+          <span className={styles.headText}>未加载文件</span>
+        )
+      }
+      extra={
+        <Space size={4}>
           <Button
             size="small"
             icon={<ZoomOutOutlined />}
@@ -208,6 +267,7 @@ export default function PageViewer({
             disabled={zoom >= ZOOM_MAX || !pages.length}
             onClick={() => applyZoom(zoomRef.current + ZOOM_STEP)}
           />
+          <Divider type="vertical" style={{ height: 16 }} />
           <Button
             size="small"
             onClick={() => onSwitchPage(currentPageIndex - 1)}
@@ -223,8 +283,8 @@ export default function PageViewer({
             下一页
           </Button>
         </Space>
-      </div>
-
+      }
+    >
       <div className={styles.canvasWrap} ref={canvasWrapRef}>
         {pages.map((page, pageIndex) => (
           <section
@@ -293,6 +353,6 @@ export default function PageViewer({
             document.body,
           )
         : null}
-    </div>
+    </Card>
   );
 }

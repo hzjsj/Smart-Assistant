@@ -31,20 +31,16 @@ export const useStyles = createStyles(({ token, css }) => ({
   viewerCard: css`
     flex: 1;
     min-width: 0;
-    border: 1px solid ${token.colorBorderSecondary};
-    border-radius: ${token.borderRadiusLG};
-    background: ${token.colorBgContainer};
     display: flex;
     flex-direction: column;
     overflow: hidden;
   `,
-  viewerHead: css`
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: ${token.marginSM};
-    padding: ${token.paddingSM} ${token.padding};
-    border-bottom: 1px solid ${token.colorBorderSecondary};
+  headText: css`
+    color: ${token.colorText};
+  `,
+  pageInput: css`
+    width: 44px;
+    text-align: center;
   `,
   canvasWrap: css`
     flex: 1;
@@ -113,15 +109,7 @@ export const useStyles = createStyles(({ token, css }) => ({
     height: 100%;
     display: flex;
     flex-direction: column;
-    border: 1px solid ${token.colorBorderSecondary};
-    border-radius: ${token.borderRadiusLG};
-    background: ${token.colorBgContainer};
     overflow: hidden;
-  `,
-  panelTitle: css`
-    padding: ${token.paddingSM} ${token.padding};
-    font-weight: 600;
-    border-bottom: 1px solid ${token.colorBorderSecondary};
   `,
   questionList: css`
     flex: 1;

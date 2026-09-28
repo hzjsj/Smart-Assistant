@@ -165,15 +165,21 @@ export default function QietiCutPage() {
   );
 
   // ─── 本地缓存：恢复与写入 ────────────────────────────────────────────
+  // 恢复完成前置位：完成前禁止空写入覆盖已有缓存（防止挂载即写空丢数据）
+  const restoredRef = useRef(false);
   useEffect(() => {
     let raw: string | null = null;
     try {
       raw = localStorage.getItem(CACHE_KEY);
     } catch {
       setHint('浏览器限制导致无法读取本地缓存', true);
+      restoredRef.current = true;
       return;
     }
-    if (!raw) return;
+    if (!raw) {
+      restoredRef.current = true;
+      return;
+    }
 
     try {
       const cache = JSON.parse(raw) as {
@@ -196,12 +202,18 @@ export default function QietiCutPage() {
         }
         setHint(`已恢复本地缓存：${normalizedPages.length} 页`);
       }
+      restoredRef.current = true;
     } catch {
       localStorage.removeItem(CACHE_KEY);
+      restoredRef.current = true;
     }
   }, [setHint]);
 
   useEffect(() => {
+    // 恢复完成前（含挂载首轮）禁止写入：pages 尚为空时不覆盖已有缓存。
+    // 显式清空走 clearAll（自行 removeItem），不经此写入。
+    if (!restoredRef.current) return;
+    if (!pages.length) return;
     try {
       localStorage.setItem(
         CACHE_KEY,
