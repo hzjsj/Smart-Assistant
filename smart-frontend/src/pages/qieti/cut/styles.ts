@@ -38,6 +38,9 @@ export const useStyles = createStyles(({ token, css }) => ({
   headText: css`
     color: ${token.colorText};
   `,
+  stemImage: css`
+    margin-top: ${token.marginXS}px;
+  `,
   pageInput: css`
     width: 44px;
     text-align: center;

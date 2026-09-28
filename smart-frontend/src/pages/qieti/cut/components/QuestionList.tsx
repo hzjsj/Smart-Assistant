@@ -1,4 +1,5 @@
-import { Button, Card, Empty, Space, Tag } from 'antd';
+import { PictureOutlined } from '@ant-design/icons';
+import { Button, Card, Empty, Image, Space, Tag, Tooltip } from 'antd';
 import {
   memo,
   useDeferredValue,
@@ -36,6 +37,8 @@ const QuestionItem = memo(function QuestionItem({
 }) {
   const { styles, cx } = useStyles();
   const itemRef = useRef<HTMLDivElement>(null);
+  /** 题干图片展开状态（默认收起，图片按钮切换） */
+  const [showImage, setShowImage] = useState(false);
 
   // 实测行高（含下外边距）：图片/公式加载会改变高度，ResizeObserver 持续上报
   useEffect(() => {
@@ -65,26 +68,56 @@ const QuestionItem = memo(function QuestionItem({
         <span className={styles.qId}>
           题号 {preview.no} · 第 {preview.pageIndex + 1} 页
         </span>
-        <Button
-          size="small"
-          danger
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteQuestion(preview.id);
-          }}
-        >
-          删除
-        </Button>
+        <Space size={4}>
+          {preview.type ? (
+            <Tag style={{ marginInlineEnd: 0 }}>{preview.type}</Tag>
+          ) : null}
+          {preview.mergedImage ? (
+            <Tooltip
+              title={showImage ? '收起题干图片' : '查看题干图片'}
+              placement="top"
+            >
+              <Button
+                size="small"
+                type={showImage ? 'primary' : 'default'}
+                icon={<PictureOutlined />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowImage((v) => !v);
+                }}
+              >
+                图片
+              </Button>
+            </Tooltip>
+          ) : null}
+          <Button
+            size="small"
+            danger
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteQuestion(preview.id);
+            }}
+          >
+            删除
+          </Button>
+        </Space>
       </div>
-      {preview.type ? (
-        <Tag style={{ marginBottom: 4 }}>{preview.type}</Tag>
+      {showImage && preview.mergedImage ? (
+        <div className={styles.stemImage}>
+          <Image
+            className={styles.mathImage}
+            src={preview.mergedImage}
+            alt="题干图片"
+            width="100%"
+          />
+        </div>
       ) : null}
       <QuestionContentView
-        mergedImage={preview.mergedImage}
         stemText={preview.stemText}
         figures={preview.figures}
         optionTexts={preview.optionTexts}
         subquestionTexts={preview.subquestionTexts}
+        hideStemLabel
       />
     </div>
   );

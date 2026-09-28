@@ -14,6 +14,8 @@ interface QuestionContentViewProps {
   figures?: string[];
   optionTexts?: string[];
   subquestionTexts?: string[];
+  /** 隐藏「题干内容」分节标签，题干文本直接显示 */
+  hideStemLabel?: boolean;
 }
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -34,6 +36,7 @@ export default function QuestionContentView({
   figures,
   optionTexts,
   subquestionTexts,
+  hideStemLabel = false,
 }: QuestionContentViewProps) {
   const { styles } = useStyles();
 
@@ -62,7 +65,7 @@ export default function QuestionContentView({
 
       {stemText ? (
         <>
-          <SectionLabel>题干内容</SectionLabel>
+          {hideStemLabel ? null : <SectionLabel>题干内容</SectionLabel>}
           <MathText text={stemText} />
         </>
       ) : null}
