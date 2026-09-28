@@ -29,6 +29,8 @@ interface QuestionListProps {
   activeQuestionId: string | null;
   onLocateQuestion: (pageIndex: number, questionId: string) => void;
   onDeleteQuestion: (id: string) => void;
+  /** 用户手动滚动列表时清除选中（避免自动定位把列表拽回选中题） */
+  onDeselectQuestion: () => void;
 }
 
 const QuestionItem = memo(function QuestionItem({
@@ -159,6 +161,7 @@ export default function QuestionList({
   activeQuestionId,
   onLocateQuestion,
   onDeleteQuestion,
+  onDeselectQuestion,
 }: QuestionListProps) {
   const { styles } = useStyles();
   const listRef = useRef<HTMLDivElement>(null);
@@ -168,6 +171,13 @@ export default function QuestionList({
     () => new Map(),
   );
   const deferredList = useDeferredValue(questionPreviewList);
+  /** 程序性自动滚动的时间窗口（到点前视为自动滚动，期间的 scroll 事件不取消选中） */
+  const autoScrollUntilRef = useRef(0);
+  /** 供 scroll 回调读取最新选中值，避免依赖闭包过期 */
+  const activeIdRef = useRef(activeQuestionId);
+  useEffect(() => {
+    activeIdRef.current = activeQuestionId;
+  }, [activeQuestionId]);
 
   useEffect(() => {
     const el = listRef.current;
@@ -231,6 +241,8 @@ export default function QuestionList({
     const itemTop = layout[index];
     const itemHeight = layout[index + 1] - layout[index];
     if (itemTop < el.scrollTop || itemTop + itemHeight > el.scrollTop + el.clientHeight) {
+      // 标记自动滚动窗口（滚动动画+测量回写约 0.7s），期间不视为用户滚动
+      autoScrollUntilRef.current = Date.now() + 700;
       el.scrollTo({
         top: Math.max(0, itemTop - (el.clientHeight - itemHeight) / 2),
         behavior: 'smooth',
@@ -280,7 +292,13 @@ export default function QuestionList({
       <div
         className={styles.questionList}
         ref={listRef}
-        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+        onScroll={(e) => {
+          setScrollTop(e.currentTarget.scrollTop);
+          // 用户手动滚动：取消选中（自动滚动窗口内的滚动除外）
+          if (Date.now() >= autoScrollUntilRef.current && activeIdRef.current) {
+            onDeselectQuestion();
+          }
+        }}
       >
         {!total ? (
           <Empty

@@ -48,7 +48,8 @@ export const useStyles = createStyles(({ token, css }) => ({
   canvasWrap: css`
     flex: 1;
     overflow: auto;
-    padding: ${token.padding}px;
+    /* 与右侧题目列表最外层 8px 左右对称 */
+    padding: ${token.paddingXS}px;
     background: ${token.colorBgLayout};
   `,
   pageBlock: css`

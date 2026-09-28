@@ -760,6 +760,7 @@ export default function QietiCutPage() {
               activeQuestionId={activeQuestionId}
               onLocateQuestion={locateQuestion}
               onDeleteQuestion={deleteQuestion}
+              onDeselectQuestion={deselectQuestion}
             />
           </Splitter.Panel>
         </Splitter>
