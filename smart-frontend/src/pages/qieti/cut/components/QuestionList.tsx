@@ -15,6 +15,15 @@ import { useStyles } from '../styles';
 const ITEM_ESTIMATED_HEIGHT = 280;
 const OVERSCAN = 3;
 
+/** 题型配色：不同题型不同 Tag 颜色，列表扫视更快 */
+const TYPE_COLORS: Record<string, string> = {
+  单选题: 'blue',
+  多选题: 'purple',
+  填空题: 'green',
+  判断题: 'orange',
+  简答题: 'cyan',
+};
+
 interface QuestionListProps {
   questionPreviewList: QuestionPreview[];
   activeQuestionId: string | null;
@@ -70,7 +79,12 @@ const QuestionItem = memo(function QuestionItem({
         </span>
         <Space size={4}>
           {preview.type ? (
-            <Tag style={{ marginInlineEnd: 0 }}>{preview.type}</Tag>
+            <Tag
+              color={TYPE_COLORS[preview.type] ?? 'default'}
+              style={{ marginInlineEnd: 0 }}
+            >
+              {preview.type}
+            </Tag>
           ) : null}
           {preview.mergedImage ? (
             <Tooltip
@@ -80,6 +94,7 @@ const QuestionItem = memo(function QuestionItem({
               <Button
                 size="small"
                 type={showImage ? 'primary' : 'default'}
+                className={showImage ? undefined : styles.imageBtn}
                 icon={<PictureOutlined />}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -245,7 +260,8 @@ export default function QuestionList({
       className={styles.rightPanel}
       styles={{
         body: {
-          padding: 0,
+          // 最外层四边留白（不参与滚动，间距恒定不穿透），保持轻盈
+          padding: 8,
           flex: 1,
           minHeight: 0,
           display: 'flex',

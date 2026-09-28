@@ -5,7 +5,7 @@ export const useStyles = createStyles(({ token, css }) => ({
   workbench: css`
     display: flex;
     flex-direction: column;
-    gap: ${token.margin};
+    gap: ${token.margin}px;
     /* 抵消 ProLayout 内容区内边距（上32/左右40/下32），本页自控 12px 呼吸边距，
        画布空间最大化；仅作用于本页，不影响其他页面 */
     margin: -32px -40px -32px;
@@ -26,7 +26,7 @@ export const useStyles = createStyles(({ token, css }) => ({
     min-width: 0;
     display: flex;
     flex-direction: column;
-    gap: ${token.margin};
+    gap: ${token.margin}px;
   `,
   viewerCard: css`
     flex: 1;
@@ -48,15 +48,15 @@ export const useStyles = createStyles(({ token, css }) => ({
   canvasWrap: css`
     flex: 1;
     overflow: auto;
-    padding: ${token.padding};
+    padding: ${token.padding}px;
     background: ${token.colorBgLayout};
   `,
   pageBlock: css`
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: ${token.borderRadiusLG};
+    border-radius: ${token.borderRadiusLG}px;
     background: ${token.colorBgContainer};
-    padding: ${token.paddingSM};
-    margin-bottom: ${token.margin};
+    padding: ${token.paddingSM}px;
+    margin-bottom: ${token.margin}px;
     /* 缩放放大时卡片随内容延展，横向滚动由 canvasWrap 承担 */
     min-width: fit-content;
     &.active {
@@ -68,24 +68,24 @@ export const useStyles = createStyles(({ token, css }) => ({
   `,
   thumbDock: css`
     position: fixed;
-    right: calc(${token.margin} + var(--qieti-nav-w, 0px));
-    bottom: ${token.margin};
+    right: calc(${token.margin}px + var(--qieti-nav-w, 0px));
+    bottom: ${token.margin}px;
     z-index: 1000;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: ${token.marginXS};
+    gap: ${token.marginXS}px;
     transition: right 0.25s ease;
   `,
   thumbs: css`
     display: flex;
-    gap: ${token.marginXS};
+    gap: ${token.marginXS}px;
     max-width: 40vw;
     overflow-x: auto;
-    padding: ${token.paddingXS};
+    padding: ${token.paddingXS}px;
     background: ${token.colorBgContainer};
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: ${token.borderRadiusLG};
+    border-radius: ${token.borderRadiusLG}px;
     box-shadow: ${token.boxShadowTertiary};
   `,
   thumb: css`
@@ -93,7 +93,7 @@ export const useStyles = createStyles(({ token, css }) => ({
     width: 64px;
     height: 88px;
     border: 2px solid transparent;
-    border-radius: ${token.borderRadius};
+    border-radius: ${token.borderRadius}px;
     overflow: hidden;
     cursor: pointer;
     background: ${token.colorBgLayout};
@@ -117,13 +117,13 @@ export const useStyles = createStyles(({ token, css }) => ({
   questionList: css`
     flex: 1;
     overflow-y: auto;
-    padding: ${token.paddingSM};
   `,
   questionItem: css`
     border: 1px solid ${token.colorBorderSecondary};
-    border-radius: ${token.borderRadiusLG};
-    padding: ${token.paddingSM};
-    margin-bottom: ${token.marginSM};
+    border-radius: ${token.borderRadiusLG}px;
+    padding: ${token.paddingSM}px;
+    /* 相邻题目间距：紧凑一些 */
+    margin-bottom: ${token.marginXS}px;
     cursor: pointer;
     transition: border-color 0.2s;
     &:hover {
@@ -139,12 +139,24 @@ export const useStyles = createStyles(({ token, css }) => ({
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: ${token.marginXS};
-    margin-bottom: ${token.marginXS};
+    gap: ${token.marginXS}px;
+    margin-bottom: ${token.marginXS}px;
   `,
   qId: css`
-    font-size: ${token.fontSizeSM};
+    font-size: ${token.fontSizeSM}px;
     color: ${token.colorTextSecondary};
+  `,
+  /* 图片按钮（收起态）：主题色浅蓝背景 + 主题色文字 */
+  imageBtn: css`
+    color: ${token.colorPrimary};
+    background: ${token.colorPrimaryBg};
+    border-color: ${token.colorPrimaryBorder};
+    &:hover,
+    &:focus {
+      color: ${token.colorPrimaryHover};
+      background: ${token.colorPrimaryBgHover};
+      border-color: ${token.colorPrimaryBorderHover};
+    }
   `,
   /* Win10 风格右侧导航栏：贴边窄条、图标按钮、可滑出收起 */
   sideNav: css`
@@ -158,7 +170,7 @@ export const useStyles = createStyles(({ token, css }) => ({
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    padding: ${token.paddingXS} 0;
+    padding: ${token.paddingXS}px 0;
     background: ${token.colorBgContainer};
     border-left: 1px solid ${token.colorBorderSecondary};
     transition: transform 0.25s ease;
@@ -195,7 +207,7 @@ export const useStyles = createStyles(({ token, css }) => ({
   `,
   mathImage: css`
     max-width: 100%;
-    border-radius: ${token.borderRadius};
-    margin: ${token.marginXS} 0;
+    border-radius: ${token.borderRadius}px;
+    margin: ${token.marginXS}px 0;
   `,
 }));
