@@ -35,6 +35,30 @@ const LABEL_BG_ACTIVE = '#004fff';
 const LABEL_TEXT = 'rgba(0, 79, 255, 0.5)';
 const LABEL_TEXT_ACTIVE = '#fff';
 
+/** Transformer 的 8 个缩放锚点名 */
+const RESIZE_ANCHORS = new Set([
+  'top-left',
+  'top-center',
+  'top-right',
+  'middle-left',
+  'middle-right',
+  'bottom-left',
+  'bottom-center',
+  'bottom-right',
+]);
+
+/** 锚点 → 活动边（h: 左/右边随键移动，v: 上/下边；未列出的方向对该锚点无效） */
+const ANCHOR_EDGES: Record<string, { h?: 'l' | 'r'; v?: 't' | 'b' }> = {
+  'top-left': { h: 'l', v: 't' },
+  'top-center': { v: 't' },
+  'top-right': { h: 'r', v: 't' },
+  'middle-left': { h: 'l' },
+  'middle-right': { h: 'r' },
+  'bottom-left': { h: 'l', v: 'b' },
+  'bottom-center': { v: 'b' },
+  'bottom-right': { h: 'r', v: 'b' },
+};
+
 interface KonvaPageStageProps {
   page: QietiPage;
   pageIndex: number;
@@ -76,6 +100,7 @@ function QuestionRectShape({
   dimmed,
   onSelectQuestion,
   onHoverQuestion,
+  onHoverAnchor,
   onChangeRect,
 }: {
   question: QietiQuestion;
@@ -90,6 +115,7 @@ function QuestionRectShape({
   dimmed: boolean;
   onSelectQuestion: (questionId: string, pageIndex: number) => void;
   onHoverQuestion: (questionId: string | null) => void;
+  onHoverAnchor: (anchor: string | null) => void;
   onChangeRect: (
     pageIndex: number,
     questionId: string,
@@ -242,6 +268,12 @@ function QuestionRectShape({
           anchorSize={10}
           anchorStrokeWidth={1}
           borderStrokeWidth={1}
+          // 悬浮锚点上报：Konva 锚点 name 形如 "bottom-right _anchor"，取首段
+          onMouseOver={(e) => {
+            const anchor = e.target.name().split(' ')[0];
+            onHoverAnchor(RESIZE_ANCHORS.has(anchor) ? anchor : null);
+          }}
+          onMouseOut={() => onHoverAnchor(null)}
           boundBoxFunc={(oldBox, newBox) =>
             Math.abs(newBox.width) < MIN_SIZE * scale ||
             Math.abs(newBox.height) < MIN_SIZE * scale
@@ -351,6 +383,113 @@ export default function KonvaPageStage({
     return () => document.removeEventListener('mouseup', onDocMouseUp);
   }, [draft, finalizeDraft]);
 
+  // ─── 键盘方向键：悬浮锚点时缩放，未悬浮时移动选中题目框 ─────────────
+  const anchorHoverRef = useRef<{
+    questionId: string;
+    rectIndex: number;
+    anchor: string;
+  } | null>(null);
+
+  const handleHoverAnchor = useCallback(
+    (questionId: string, rectIndex: number, anchor: string | null) => {
+      anchorHoverRef.current = anchor
+        ? { questionId, rectIndex, anchor }
+        : null;
+    },
+    [],
+  );
+
+  /** 悬浮锚点 + 方向键：对角固定，沿锚点活动边缩放（页面像素坐标，clamp + MIN_SIZE） */
+  const resizeByKeyboard = useCallback(
+    (questionId: string, rectIndex: number, anchor: string, dx: number, dy: number) => {
+      const q = page.questions.find((item) => item.id === questionId);
+      const rect = q ? getQuestionRects(q)[rectIndex] : undefined;
+      if (!rect) return;
+      const edges = ANCHOR_EDGES[anchor];
+      if (!edges) return;
+      let { x, y, w, h } = rect;
+      if (edges.h === 'l') {
+        const nx = clamp(x + dx, 0, x + w - MIN_SIZE);
+        w += x - nx;
+        x = nx;
+      }
+      if (edges.h === 'r') {
+        w = clamp(w + dx, MIN_SIZE, Math.max(MIN_SIZE, page.width - x));
+      }
+      if (edges.v === 't') {
+        const ny = clamp(y + dy, 0, y + h - MIN_SIZE);
+        h += y - ny;
+        y = ny;
+      }
+      if (edges.v === 'b') {
+        h = clamp(h + dy, MIN_SIZE, Math.max(MIN_SIZE, page.height - y));
+      }
+      onChangeRect(pageIndex, questionId, rectIndex, { x, y, w, h });
+    },
+    [page, pageIndex, onChangeRect],
+  );
+
+  /** 仅选中 + 方向键：整体平移选中题目的所有框（以整体包围盒 clamp，保持相对位置） */
+  const moveByKeyboard = useCallback(
+    (questionId: string, dx: number, dy: number) => {
+      const q = page.questions.find((item) => item.id === questionId);
+      if (!q) return;
+      const rects = getQuestionRects(q);
+      if (!rects.length) return;
+      const minX = Math.min(...rects.map((r) => r.x));
+      const minY = Math.min(...rects.map((r) => r.y));
+      const maxX = Math.max(...rects.map((r) => r.x + r.w));
+      const maxY = Math.max(...rects.map((r) => r.y + r.h));
+      const mx = clamp(dx, -minX, Math.max(0, page.width - maxX));
+      const my = clamp(dy, -minY, Math.max(0, page.height - maxY));
+      if (mx === 0 && my === 0) return;
+      rects.forEach((rect, rectIndex) => {
+        onChangeRect(pageIndex, questionId, rectIndex, {
+          x: rect.x + mx,
+          y: rect.y + my,
+          w: rect.w,
+          h: rect.h,
+        });
+      });
+    },
+    [page, pageIndex, onChangeRect],
+  );
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!activeQuestionId) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const deltas: Record<string, [number, number]> = {
+        ArrowLeft: [-1, 0],
+        ArrowRight: [1, 0],
+        ArrowUp: [0, -1],
+        ArrowDown: [0, 1],
+      };
+      const delta = deltas[e.key];
+      if (!delta) return;
+      e.preventDefault();
+      const step = e.shiftKey ? 10 : 1;
+      const dx = delta[0] * step;
+      const dy = delta[1] * step;
+      const hover = anchorHoverRef.current;
+      if (hover && hover.questionId === activeQuestionId) {
+        resizeByKeyboard(hover.questionId, hover.rectIndex, hover.anchor, dx, dy);
+      } else {
+        moveByKeyboard(activeQuestionId, dx, dy);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [activeQuestionId, resizeByKeyboard, moveByKeyboard]);
+
   return (
     <div style={stageWidth > 0 ? { width: stageWidth } : undefined}>
       {stageWidth > 0 ? (
@@ -397,6 +536,9 @@ export default function KonvaPageStage({
                   dimmed={!!draft}
                   onSelectQuestion={onSelectQuestion}
                   onHoverQuestion={setHoverQuestionId}
+                  onHoverAnchor={(anchor) =>
+                    handleHoverAnchor(q.id, rectIndex, anchor)
+                  }
                   onChangeRect={onChangeRect}
                 />
               ));
