@@ -55,7 +55,7 @@ export const useStyles = createStyles(({ token, css }) => ({
   /* 合并浮动操作条：sticky 吸顶悬浮（height 0 不占布局空间），内容居中 */
   mergeBarSticky: css`
     position: sticky;
-    top: 4px;
+    top: 16px;
     z-index: 30;
     display: flex;
     justify-content: center;
@@ -66,17 +66,32 @@ export const useStyles = createStyles(({ token, css }) => ({
     pointer-events: auto;
     display: flex;
     align-items: center;
-    gap: ${token.marginXS}px;
-    padding: 4px 8px 4px 14px;
+    gap: 12px;
+    min-width: 260px;
+    min-height: 64px;
+    padding: 14px 18px 14px 26px;
     background: ${token.colorBgContainer};
     border: 1px solid ${token.colorBorderSecondary};
     border-radius: 999px;
-    box-shadow: ${token.boxShadowSecondary};
+    box-shadow:
+      0 6px 24px rgba(0, 21, 41, 0.14),
+      0 1px 3px rgba(0, 21, 41, 0.08);
   `,
   mergeBarText: css`
     font-size: ${token.fontSize}px;
-    font-weight: 600;
+    color: ${token.colorTextSecondary};
     white-space: nowrap;
+  `,
+  mergeBarCount: css`
+    margin: 0 4px;
+    font-size: 18px;
+    font-weight: 700;
+    color: ${token.colorPrimary};
+  `,
+  mergeBarDivider: css`
+    width: 1px;
+    height: 20px;
+    background: ${token.colorBorderSecondary};
   `,
   /* 合并/解除合并确认：内联遮罩 + 居中卡片（无传送门无动画，行为可靠） */
   confirmOverlay: css`

@@ -154,7 +154,7 @@ const QuestionItem = memo(function QuestionItem({
           {preview.rectCount > 1 ? (
             <Popconfirm
               title={`拆分为 ${preview.rectCount} 道独立题目？`}
-              description="首框保留内容，其余框拆出为空内容新题"
+              description="将完整还原各子题的题干、选项与图片"
               okText="拆分"
               cancelText="取消"
               onConfirm={() => onUnmergeQuestion(preview.id)}

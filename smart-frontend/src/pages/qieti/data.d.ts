@@ -11,6 +11,19 @@ export interface Rect {
 export interface QuestionRect extends Rect {
   /** 框所在页 id；缺省视为题目所在页（老数据兼容） */
   pageId?: string;
+  /** 合并题中该框来源子题的下标（sources 数组下标） */
+  sourceIndex?: number;
+}
+
+/** 合并来源子题：合并前的原始题目数据（拆分时用于完整还原） */
+export interface QietiQuestionSource {
+  /** 原题 id（还原后沿用，选中/删除引用不失效） */
+  id: string;
+  type: string;
+  rects: QuestionRect[];
+  subImages: string[];
+  mergedImage: string;
+  info: QuestionInfo;
 }
 
 export interface QuestionInfo {
@@ -31,6 +44,8 @@ export interface QietiQuestion {
   subImages: string[];
   mergedImage: string;
   info: QuestionInfo;
+  /** 合并来源子题快照（拆分时完整还原）；普通单框题无此字段 */
+  sources?: QietiQuestionSource[];
 }
 
 export interface QietiPage {

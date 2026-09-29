@@ -676,6 +676,7 @@ export default function QietiCutPage() {
                 ...toPercentRect(rect, rectHost(rect)),
                 pageId: rect.pageId ?? p.id,
               })),
+              ...(q.sources ? { sources: q.sources } : {}),
             };
           }),
       })),
@@ -1057,7 +1058,7 @@ export default function QietiCutPage() {
               </div>
             ) : (
               <div className={styles.confirmBody}>
-                首框保留题号与内容，其余框拆出为空内容新题（落回框所在页）。
+                将完整还原各子题的题干、选项与图片（框落回各自所在页）。
               </div>
             )}
             <div className={styles.confirmWarning}>

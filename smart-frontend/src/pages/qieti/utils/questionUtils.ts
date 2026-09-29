@@ -3,6 +3,7 @@ import type {
   CutApiQuestion,
   QietiPage,
   QietiQuestion,
+  QietiQuestionSource,
   QuestionRect,
   Rect,
 } from '../data';
@@ -88,6 +89,24 @@ export function normalizeQuestionShape(
     // 老数据无 pageId：归属题目所在页（打开缓存/快照即自动迁移）
     pageId: rect.pageId ?? pageId,
   }));
+  // sources（合并来源子题）透传，框同样补 pageId
+  const sources = Array.isArray(question.sources)
+    ? question.sources.map((source) => ({
+        ...source,
+        info: source.info ?? {
+          figures: [],
+          stemText: '',
+          optionTexts: [],
+          subquestionTexts: [],
+          fullText: '',
+        },
+        subImages: source.subImages ?? [],
+        rects: (source.rects ?? []).map((rect) => ({
+          ...rect,
+          pageId: rect.pageId ?? pageId,
+        })),
+      }))
+    : undefined;
   return {
     id: question.id ?? createId(),
     no: question.no ?? 0,
@@ -101,6 +120,7 @@ export function normalizeQuestionShape(
       subquestionTexts: [],
       fullText: '',
     },
+    ...(sources ? { sources } : {}),
     rects,
     rect: rects[0] ? { ...rects[0] } : (question?.rect ?? null),
   };
@@ -353,10 +373,62 @@ function mergeQuestionInfo(
     .join('\n');
 }
 
+/** 题目 → 子题快照（合并前原始数据的完整拷贝，拆分时用于 100% 还原） */
+function toSourceSnapshot(question: QietiQuestion): QietiQuestionSource {
+  return {
+    id: question.id,
+    type: question.type,
+    rects: ensureQuestionRects(question).map((rect) => ({ ...rect })),
+    subImages: [...question.subImages],
+    mergedImage: question.mergedImage,
+    info: structuredClone(question.info),
+  };
+}
+
 /**
- * 合并多题为一题（支持跨页）：主题取 no 最小者（保留 id/no/type/mergedImage 及所在页），
- * 其余题的框按 no 顺序拼入 rects（各框保留自身 pageId），内容字段按既有规则归并，
- * 被合并题从所在页删除。返回新 pages（入参不变）；ids 无效或不足 2 题时原样返回。
+ * 合并题：由 sources 重算顶层展示视图（rects/info/subImages/mergedImage/type）。
+ * 画布与列表只消费顶层字段；拆分时从 sources 取原始数据完整还原。
+ * 归并语义与接口碎片归并一致：题干缺才补、选项/小题/插图拼接、题型取首个已知值。
+ */
+export function syncMergedView(question: QietiQuestion): void {
+  const sources = question.sources;
+  if (!sources?.length) {
+    syncQuestionRect(question);
+    return;
+  }
+
+  const rects: QuestionRect[] = [];
+  sources.forEach((source, sourceIndex) => {
+    for (const rect of source.rects) {
+      rects.push({ ...rect, sourceIndex });
+    }
+  });
+  question.rects = rects;
+  syncQuestionRect(question);
+
+  question.subImages = sources.flatMap((source) => source.subImages);
+  question.mergedImage =
+    sources.find((source) => source.mergedImage)?.mergedImage ?? '';
+  question.type = sources.find((source) => source.type)?.type ?? question.type;
+
+  const info: QietiQuestion['info'] = {
+    figures: [],
+    stemText: '',
+    optionTexts: [],
+    subquestionTexts: [],
+    fullText: '',
+  };
+  for (const source of sources) {
+    mergeQuestionInfo(info, structuredClone(source.info));
+  }
+  question.info = info;
+}
+
+/**
+ * 合并多题为一题（支持跨页）：主题取 no 最小者（留在其所在页）。
+ * 每道被合并题的完整数据快照进 sources（含主题自身既有 sources，拆分可 100% 还原），
+ * 顶层展示视图由 syncMergedView 统一派生，被合并题从所在页删除。
+ * 返回新 pages（入参不变）；ids 无效或不足 2 题时原样返回。
  */
 export function mergeQuestions(pages: QietiPage[], ids: string[]): QietiPage[] {
   if (ids.length < 2) return pages;
@@ -372,25 +444,17 @@ export function mergeQuestions(pages: QietiPage[], ids: string[]): QietiPage[] {
   found.sort((a, b) => a.question.no - b.question.no);
   const [primary, ...others] = found;
 
-  const rects = ensureQuestionRects(primary.question);
-  for (const { question } of others) {
-    rects.push(...ensureQuestionRects(question).map((rect) => ({ ...rect })));
-  }
-  syncQuestionRect(primary.question);
-
-  for (const { question } of others) {
-    primary.question.subImages = [
-      ...primary.question.subImages,
-      ...question.subImages,
-    ];
-    if (!primary.question.mergedImage && question.mergedImage) {
-      primary.question.mergedImage = question.mergedImage;
-    }
-    if (!primary.question.type && question.type) {
-      primary.question.type = question.type;
-    }
-    mergeQuestionInfo(primary.question.info, question.info);
-  }
+  // 来源快照：主题既有 sources（可能是更早合并的结果，拍平保留最大粒度）
+  // + 其余题（自身带 sources 时同样拍平）
+  primary.question.sources = [
+    ...(primary.question.sources ?? [toSourceSnapshot(primary.question)]),
+    ...others.flatMap(({ question }) =>
+      question.sources?.length
+        ? structuredClone(question.sources)
+        : [toSourceSnapshot(question)],
+    ),
+  ];
+  syncMergedView(primary.question);
 
   for (const { page: hostPage, question } of others) {
     hostPage.questions = hostPage.questions.filter(
@@ -401,8 +465,10 @@ export function mergeQuestions(pages: QietiPage[], ids: string[]): QietiPage[] {
 }
 
 /**
- * 解除合并：题目每个框拆成独立题。首框题保留原 id/no/type/info/mergedImage/subImages，
- * 其余框各建空内容新题（默认题型），新题落回框所在页（跨页时分散到多页）。
+ * 解除合并：将合并题还原为合并前的各道子题。
+ * 有 sources 时逐子题完整还原（原 id/内容/图片/题型，框落回其所在页，
+ * 题号 = 首子题 no + 小数偏移保持与画布框顺序一致）；
+ * 无 sources 的老合并题兜底按框拆分（首框保留内容，其余空内容新题）。
  * 返回新 pages（入参不变）；题目不存在或仅单框时原样返回。
  */
 export function unmergeQuestion(pages: QietiPage[], id: string): QietiPage[] {
@@ -420,21 +486,58 @@ export function unmergeQuestion(pages: QietiPage[], id: string): QietiPage[] {
   const rects = ensureQuestionRects(question);
   if (rects.length < 2) return pages;
 
+  const sources = question.sources?.length ? question.sources : null;
+
+  // 新版还原路径：sources 完整恢复每道子题
+  if (sources && sources.length >= 2) {
+    const [firstSource, ...restSources] = sources;
+    question.id = firstSource.id;
+    question.type = firstSource.type;
+    question.rects = firstSource.rects.map((rect) => ({ ...rect }));
+    question.subImages = [...firstSource.subImages];
+    question.mergedImage = firstSource.mergedImage;
+    question.info = structuredClone(firstSource.info);
+    question.sources = undefined;
+    syncQuestionRect(question);
+
+    restSources.forEach((source, index) => {
+      const restored = normalizeQuestionShape(
+        {
+          id: source.id,
+          no: question.no + (index + 1) * 0.01,
+          type: source.type,
+          rect: source.rects[0] ? { ...source.rects[0] } : null,
+          rects: source.rects.map((rect) => ({ ...rect })),
+          subImages: [...source.subImages],
+          mergedImage: source.mergedImage,
+          info: structuredClone(source.info),
+        },
+        source.rects[0]?.pageId,
+      );
+      const hostPage =
+        next.find((item) => item.id === source.rects[0]?.pageId) ?? page;
+      hostPage.questions.push(restored);
+    });
+    return next;
+  }
+
+  // 兜底：无 sources 的老合并题按框拆分（首框保留内容，其余空内容新题），
+  // 题号 = 原题号 + 序号小数偏移保持框顺序
   const [firstRect, ...otherRects] = rects;
   question.rects = [firstRect];
   question.rect = { ...firstRect };
 
-  for (const rect of otherRects) {
+  otherRects.forEach((rect, index) => {
     const newQuestion = normalizeQuestionShape({
       id: createId(),
-      no: 0,
+      no: question.no + (index + 1) * 0.01,
       type: QUESTION_TYPES[0],
       rect: { ...rect },
       rects: [{ ...rect }],
     });
     const hostPage = next.find((item) => item.id === rect.pageId) ?? page;
     hostPage.questions.push(newQuestion);
-  }
+  });
   return next;
 }
 

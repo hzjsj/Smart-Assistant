@@ -101,7 +101,7 @@ interface DraftRect {
   y2: number;
 }
 
-/** 单个题目区块形状：可拖拽 Group（矩形 + 题号标签）+ 主选中时 Transformer */
+/** 单个题目区块形状：可拖拽 Group（矩形 + 题号标签）+ 单选时 Transformer */
 function QuestionRectShape({
   question,
   rect,
@@ -112,6 +112,7 @@ function QuestionRectShape({
   scale,
   isPrimary,
   isSelected,
+  multiSelect,
   showPageSuffix,
   isHovered,
   dimmed,
@@ -127,10 +128,12 @@ function QuestionRectShape({
   pageIndex: number;
   page: QietiPage;
   scale: number;
-  /** 主选中（多选集合末位）：叠加 Transformer，可缩放/键盘微调 */
+  /** 主选中（多选集合末位）：深一档填充/实色标签；多选时不挂锚点 */
   isPrimary: boolean;
   /** 多选选中（含主选中） */
   isSelected: boolean;
+  /** 多选进行中（选中 ≥2 题）：隐藏 Transformer，纯高亮模式 */
+  multiSelect: boolean;
   /** 跨页题的非主页框：标签追加 ·页N */
   showPageSuffix: boolean;
   isHovered: boolean;
@@ -155,21 +158,22 @@ function QuestionRectShape({
 
   // Transformer 挂在内层矩形而非 Group：Group 包围盒含凸出的题号标签，
   // 按包围盒缩放会导致标签被一起缩放、且顶边漂移（labelH × (scaleY-1)）
+  // 多选进行中不挂锚点：纯高亮模式，避免缩放手柄干扰多选
   useEffect(() => {
-    if (isPrimary && trRef.current && rectRef.current) {
+    if (isPrimary && !multiSelect && trRef.current && rectRef.current) {
       trRef.current.attachTo(rectRef.current);
     } else if (trRef.current) {
       trRef.current.detach();
     }
-  }, [isPrimary]);
+  }, [isPrimary, multiSelect]);
 
   // Transformer 以绝对（屏幕）坐标缓存节点矩形；缩放改变 Stage scale 后其缓存
   // 不会自动重算，锚点会停留在旧位置，需主动 forceUpdate
   useEffect(() => {
-    if (isPrimary && trRef.current) {
+    if (isPrimary && !multiSelect && trRef.current) {
       trRef.current.forceUpdate();
     }
-  }, [isPrimary, scale]);
+  }, [isPrimary, multiSelect, scale]);
 
   const setCursor = (e: Konva.KonvaEventObject<MouseEvent>, cursor: string) => {
     const stage = e.target.getStage();
@@ -327,7 +331,7 @@ function QuestionRectShape({
           />
         </Group>
       </Group>
-      {isPrimary ? (
+      {isPrimary && !multiSelect ? (
         <Transformer
           ref={trRef}
           flipEnabled={false}
@@ -380,6 +384,8 @@ export default function KonvaPageStage({
   const [hoverQuestionId, setHoverQuestionId] = useState<string | null>(null);
   /** 主选中 = 多选集合末位：Transformer/键盘微调的基准 */
   const primaryQuestionId = selectedQuestionIds.at(-1) ?? null;
+  /** 多选进行中（≥2 题）：锚点隐藏，纯高亮模式 */
+  const multiSelect = selectedQuestionIds.length >= 2;
 
   // 缩放比 = 适应宽度基准比 × 用户缩放倍数；框/标签/草稿均随其实时等比更新
   const stageWidth = baseWidth * zoom;
@@ -651,6 +657,7 @@ export default function KonvaPageStage({
                     scale={scale}
                     isPrimary={q.id === primaryQuestionId}
                     isSelected={selectedQuestionIds.includes(q.id)}
+                    multiSelect={multiSelect}
                     showPageSuffix={
                       rect.pageId !== undefined && rect.pageId !== primaryPageId
                     }

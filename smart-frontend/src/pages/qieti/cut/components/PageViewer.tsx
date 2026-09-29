@@ -323,30 +323,23 @@ export default function PageViewer({
           {mergeBar.count >= 2 ? (
             <div className={styles.mergeActionBar}>
               <span className={styles.mergeBarText}>
-                已选 {mergeBar.count} 题
+                已选
+                <span className={styles.mergeBarCount}>{mergeBar.count}</span>题
                 {mergeBar.pageCount > 1 ? ` · 跨 ${mergeBar.pageCount} 页` : ''}
               </span>
-              <Button
-                size="small"
-                type="primary"
-                icon={<LinkOutlined />}
-                onClick={onMerge}
-              >
-                合并选中
+              <span className={styles.mergeBarDivider} />
+              <Button type="primary" icon={<LinkOutlined />} onClick={onMerge}>
+                合并
               </Button>
               {mergeBar.primaryMerged ? (
-                <Button
-                  size="small"
-                  icon={<ScissorOutlined />}
-                  onClick={onUnmerge}
-                >
-                  解除合并
+                <Button icon={<ScissorOutlined />} onClick={onUnmerge}>
+                  拆分
                 </Button>
               ) : null}
               <Tooltip title="取消选择" placement="bottom">
                 <Button
-                  size="small"
                   type="text"
+                  shape="circle"
                   icon={<CloseOutlined />}
                   onClick={onDeselectQuestion}
                 />
