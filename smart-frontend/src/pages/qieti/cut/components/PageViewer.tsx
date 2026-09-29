@@ -1,6 +1,9 @@
 import {
+  CloseOutlined,
   EyeInvisibleOutlined,
   EyeOutlined,
+  LinkOutlined,
+  ScissorOutlined,
   ZoomInOutlined,
   ZoomOutOutlined,
 } from '@ant-design/icons';
@@ -8,15 +11,15 @@ import {
   Button,
   Card,
   Divider,
+  InputNumber,
   Progress,
   Space,
-  InputNumber,
   Tooltip,
 } from 'antd';
 import type { MutableRefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { QietiPage, Rect } from '../../data';
+import type { QietiPage, QietiQuestion, Rect } from '../../data';
 import { useStyles } from '../styles';
 import KonvaPageStage from './KonvaPageStage';
 
@@ -26,6 +29,16 @@ const ZOOM_STEP = 0.25;
 /** Ctrl+滚轮步进：每次精确调整 1% */
 const ZOOM_WHEEL_STEP = 0.01;
 
+/** 浮动操作条的状态摘要（由页面级组件派生） */
+export interface MergeBarInfo {
+  /** 多选数量 */
+  count: number;
+  /** 选中题目分布的页数 */
+  pageCount: number;
+  /** 主选中（末位）是否为合并题：决定 ✂ 解除合并按钮显隐 */
+  primaryMerged: boolean;
+}
+
 interface PageViewerProps {
   pages: QietiPage[];
   currentPageIndex: number;
@@ -33,8 +46,17 @@ interface PageViewerProps {
   onSelectPage: (index: number) => void;
   pageSectionRefs: MutableRefObject<(HTMLElement | null)[]>;
   thumbRefs: MutableRefObject<(HTMLElement | null)[]>;
-  activeQuestionId: string | null;
-  onSelectQuestion: (questionId: string, pageIndex: number) => void;
+  selectedQuestionIds: string[];
+  /** 每页应渲染的题目（框在该页的题，跨页题出现在多页） */
+  questionsByPageId: Map<string, QietiQuestion[]>;
+  /** 页面尺寸查询表：跨页框按所在页宽高 clamp */
+  pagesMetaById: Map<string, { id: string; width: number; height: number }>;
+  mergeBar: MergeBarInfo;
+  onSelectQuestion: (
+    questionId: string,
+    pageIndex: number,
+    additive: boolean,
+  ) => void;
   onDeselectQuestion: () => void;
   onChangeRect: (
     pageIndex: number,
@@ -43,10 +65,12 @@ interface PageViewerProps {
     rect: Rect,
   ) => void;
   onCreateQuestion: (pageIndex: number, rect: Rect) => void;
+  onMerge: () => void;
+  onUnmerge: () => void;
   getPageImageSrc: (page: QietiPage) => string;
 }
 
-/** 页面堆叠查看器：Konva 划题交互 + 悬浮缩略图导航坞 */
+/** 页面堆叠查看器：Konva 划题交互 + 悬浮缩略图导航坞 + 合并浮动操作条 */
 export default function PageViewer({
   pages,
   currentPageIndex,
@@ -54,11 +78,16 @@ export default function PageViewer({
   onSelectPage,
   pageSectionRefs,
   thumbRefs,
-  activeQuestionId,
+  selectedQuestionIds,
+  questionsByPageId,
+  pagesMetaById,
+  mergeBar,
   onSelectQuestion,
   onDeselectQuestion,
   onChangeRect,
   onCreateQuestion,
+  onMerge,
+  onUnmerge,
   getPageImageSrc,
 }: PageViewerProps) {
   const { styles, cx } = useStyles();
@@ -110,7 +139,10 @@ export default function PageViewer({
       const prev = zoomRef.current;
       const next = Math.min(
         ZOOM_MAX,
-        Math.max(ZOOM_MIN, prev + (e.deltaY > 0 ? -ZOOM_WHEEL_STEP : ZOOM_WHEEL_STEP)),
+        Math.max(
+          ZOOM_MIN,
+          prev + (e.deltaY > 0 ? -ZOOM_WHEEL_STEP : ZOOM_WHEEL_STEP),
+        ),
       );
       if (next === prev) return;
       // 锚点只在无待处理校正时捕获（基准 = 已提交布局）；
@@ -286,6 +318,42 @@ export default function PageViewer({
       }
     >
       <div className={styles.canvasWrap} ref={canvasWrapRef}>
+        {/* 合并浮动操作条：sticky 吸顶悬浮，不占布局空间；选中 ≥2 题时出现 */}
+        <div className={styles.mergeBarSticky}>
+          {mergeBar.count >= 2 ? (
+            <div className={styles.mergeActionBar}>
+              <span className={styles.mergeBarText}>
+                已选 {mergeBar.count} 题
+                {mergeBar.pageCount > 1 ? ` · 跨 ${mergeBar.pageCount} 页` : ''}
+              </span>
+              <Button
+                size="small"
+                type="primary"
+                icon={<LinkOutlined />}
+                onClick={onMerge}
+              >
+                合并选中
+              </Button>
+              {mergeBar.primaryMerged ? (
+                <Button
+                  size="small"
+                  icon={<ScissorOutlined />}
+                  onClick={onUnmerge}
+                >
+                  解除合并
+                </Button>
+              ) : null}
+              <Tooltip title="取消选择" placement="bottom">
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<CloseOutlined />}
+                  onClick={onDeselectQuestion}
+                />
+              </Tooltip>
+            </div>
+          ) : null}
+        </div>
         {pages.map((page, pageIndex) => (
           <section
             key={page.id}
@@ -304,7 +372,9 @@ export default function PageViewer({
                 pageIndex={pageIndex}
                 baseWidth={baseWidth}
                 zoom={zoom}
-                activeQuestionId={activeQuestionId}
+                selectedQuestionIds={selectedQuestionIds}
+                pageQuestions={questionsByPageId.get(page.id) ?? []}
+                pagesMetaById={pagesMetaById}
                 imageSrc={getPageImageSrc(page)}
                 onSelectQuestion={onSelectQuestion}
                 onDeselectQuestion={onDeselectQuestion}

@@ -7,6 +7,12 @@ export interface Rect {
   h: number;
 }
 
+/** 题目框：页面像素坐标 + 所属页（跨页合并时框可寄存在其他页） */
+export interface QuestionRect extends Rect {
+  /** 框所在页 id；缺省视为题目所在页（老数据兼容） */
+  pageId?: string;
+}
+
 export interface QuestionInfo {
   figures: string[];
   stemText: string;
@@ -20,8 +26,8 @@ export interface QietiQuestion {
   no: number;
   type: string;
   /** 主矩形（rects[0] 的冗余副本，兼容旧数据） */
-  rect: Rect | null;
-  rects: Rect[];
+  rect: QuestionRect | null;
+  rects: QuestionRect[];
   subImages: string[];
   mergedImage: string;
   info: QuestionInfo;
@@ -44,7 +50,11 @@ export interface QuestionPreview {
   id: string;
   no: number;
   pageIndex: number;
+  /** 题目所有框涉及的页序号（跨页题含多页，升序） */
+  pageIndices: number[];
   type: string;
+  /** 框数量（>1 为合并题） */
+  rectCount: number;
   mergedImage: string;
   figures: string[];
   stemText: string;

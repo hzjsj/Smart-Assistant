@@ -1,6 +1,7 @@
 import type Konva from 'konva';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Circle,
   Group,
   Image as KonvaImage,
   Rect as KonvaRect,
@@ -21,14 +22,19 @@ import {
 const LABEL_HEIGHT = 20;
 const LABEL_BASE_WIDTH = 40;
 const LABEL_MULTI_SUFFIX_WIDTH = 16;
+const LABEL_PAGE_SUFFIX_WIDTH = 34;
 const LABEL_PADDING = 6;
 const LABEL_FONT_SIZE = 12;
 const LABEL_FONT_FAMILY = 'Arial';
 const LABEL_FONT_WEIGHT = '500';
 
+/** 多选勾选角标（白底蓝勾圆点）尺寸 */
+const CHECK_RADIUS = 8;
+
 /** 框体/标签配色（同原型；hover 为增强项，填充深浅介于透明与激活之间） */
 const RECT_STROKE = '#004fff7f';
 const RECT_FILL_HOVER = 'rgba(0, 79, 255, 0.04)';
+const RECT_FILL_SELECTED = 'rgba(0, 79, 255, 0.08)';
 const RECT_FILL_ACTIVE = 'rgba(0, 79, 255, 0.1)';
 const LABEL_BG = 'rgba(0, 79, 255, 0.2)';
 const LABEL_BG_ACTIVE = '#004fff';
@@ -66,9 +72,18 @@ interface KonvaPageStageProps {
   baseWidth: number;
   /** 用户缩放倍数（1 = 适应宽度），切题框随其实时等比更新 */
   zoom: number;
-  activeQuestionId: string | null;
+  /** 多选集合（Ctrl+点击合并用）；主选中 = 末位 */
+  selectedQuestionIds: string[];
+  /** 本页应渲染的题目（框在本页的题；跨页题会同时出现在多个页） */
+  pageQuestions: QietiQuestion[];
+  /** 页面尺寸查询表：跨页框按所在页宽高 clamp */
+  pagesMetaById: Map<string, { id: string; width: number; height: number }>;
   imageSrc: string;
-  onSelectQuestion: (questionId: string, pageIndex: number) => void;
+  onSelectQuestion: (
+    questionId: string,
+    pageIndex: number,
+    additive: boolean,
+  ) => void;
   onDeselectQuestion: () => void;
   onChangeRect: (
     pageIndex: number,
@@ -86,7 +101,7 @@ interface DraftRect {
   y2: number;
 }
 
-/** 单个题目区块形状：可拖拽 Group（矩形 + 题号标签）+ 激活时 Transformer */
+/** 单个题目区块形状：可拖拽 Group（矩形 + 题号标签）+ 主选中时 Transformer */
 function QuestionRectShape({
   question,
   rect,
@@ -95,7 +110,9 @@ function QuestionRectShape({
   pageIndex,
   page,
   scale,
-  isActive,
+  isPrimary,
+  isSelected,
+  showPageSuffix,
   isHovered,
   dimmed,
   onSelectQuestion,
@@ -110,10 +127,19 @@ function QuestionRectShape({
   pageIndex: number;
   page: QietiPage;
   scale: number;
-  isActive: boolean;
+  /** 主选中（多选集合末位）：叠加 Transformer，可缩放/键盘微调 */
+  isPrimary: boolean;
+  /** 多选选中（含主选中） */
+  isSelected: boolean;
+  /** 跨页题的非主页框：标签追加 ·页N */
+  showPageSuffix: boolean;
   isHovered: boolean;
   dimmed: boolean;
-  onSelectQuestion: (questionId: string, pageIndex: number) => void;
+  onSelectQuestion: (
+    questionId: string,
+    pageIndex: number,
+    additive: boolean,
+  ) => void;
   onHoverQuestion: (questionId: string | null) => void;
   onHoverAnchor: (anchor: string | null) => void;
   onChangeRect: (
@@ -130,27 +156,34 @@ function QuestionRectShape({
   // Transformer 挂在内层矩形而非 Group：Group 包围盒含凸出的题号标签，
   // 按包围盒缩放会导致标签被一起缩放、且顶边漂移（labelH × (scaleY-1)）
   useEffect(() => {
-    if (isActive && trRef.current && rectRef.current) {
+    if (isPrimary && trRef.current && rectRef.current) {
       trRef.current.attachTo(rectRef.current);
     } else if (trRef.current) {
       trRef.current.detach();
     }
-  }, [isActive]);
+  }, [isPrimary]);
 
   // Transformer 以绝对（屏幕）坐标缓存节点矩形；缩放改变 Stage scale 后其缓存
   // 不会自动重算，锚点会停留在旧位置，需主动 forceUpdate
   useEffect(() => {
-    if (isActive && trRef.current) {
+    if (isPrimary && trRef.current) {
       trRef.current.forceUpdate();
     }
-  }, [isActive, scale]);
+  }, [isPrimary, scale]);
 
   const setCursor = (e: Konva.KonvaEventObject<MouseEvent>, cursor: string) => {
     const stage = e.target.getStage();
     if (stage) stage.container().style.cursor = cursor;
   };
 
-  const handleSelect = () => onSelectQuestion(question.id, pageIndex);
+  // Ctrl/⌘ + 点击：加入/移出多选集合；普通点击：重置为单选
+  // （onDragStart 传 DragEvent，用宽联合兼容；触摸事件无 ctrlKey 用 in 收窄）
+  const handleSelect = (
+    e: Konva.KonvaEventObject<MouseEvent | TouchEvent | DragEvent>,
+  ) => {
+    const additive = 'ctrlKey' in e.evt && !!(e.evt.ctrlKey || e.evt.metaKey);
+    onSelectQuestion(question.id, pageIndex, additive);
+  };
 
   const handleDragEnd = (e: Konva.KonvaEventObject<DragEvent>) => {
     onChangeRect(pageIndex, question.id, rectIndex, {
@@ -182,11 +215,17 @@ function QuestionRectShape({
 
   // 标签宽度与选中态无关（对齐原型：选中仅变配色，不加宽）
   const labelWidth =
-    LABEL_BASE_WIDTH + (rectsCount > 1 ? LABEL_MULTI_SUFFIX_WIDTH : 0);
-  const labelText = `${question.no}题${rectsCount > 1 ? ` (${rectIndex + 1})` : ''}`;
+    LABEL_BASE_WIDTH +
+    (rectsCount > 1 ? LABEL_MULTI_SUFFIX_WIDTH : 0) +
+    (showPageSuffix ? LABEL_PAGE_SUFFIX_WIDTH : 0);
+  const labelText = `${question.no}题${
+    rectsCount > 1 ? ` (${rectIndex + 1})` : ''
+  }${showPageSuffix ? `·页${pageIndex + 1}` : ''}`;
   // canvas 会裁剪出界绘制：标签默认悬于框上方，贴近页面顶部时回落到 y=0 防裁剪
   const labelLocalY =
     rect.y - LABEL_HEIGHT / scale < 0 ? -rect.y : -LABEL_HEIGHT / scale;
+  // ✓ 角标圆心贴框左上角，贴近页面顶部时下移防裁剪
+  const badgeCy = rect.y - CHECK_RADIUS / scale < 0 ? CHECK_RADIUS / scale : 0;
 
   return (
     <>
@@ -219,16 +258,48 @@ function QuestionRectShape({
           width={rect.w}
           height={rect.h}
           fill={
-            isActive
+            isPrimary
               ? RECT_FILL_ACTIVE
-              : isHovered
-                ? RECT_FILL_HOVER
-                : 'transparent'
+              : isSelected
+                ? RECT_FILL_SELECTED
+                : isHovered
+                  ? RECT_FILL_HOVER
+                  : 'transparent'
           }
-          stroke={RECT_STROKE}
-          strokeWidth={1}
+          stroke={isSelected ? '#004fff' : RECT_STROKE}
+          strokeWidth={isSelected ? 2 : 1}
           strokeScaleEnabled={false}
         />
+        {/* 多选勾选角标：白底蓝勾圆点，贴框左上角，反缩放恒定 css 尺寸 */}
+        {isSelected ? (
+          <Group
+            x={0}
+            y={badgeCy}
+            scaleX={1 / scale}
+            scaleY={1 / scale}
+            listening={false}
+          >
+            <Circle
+              radius={CHECK_RADIUS}
+              fill="#fff"
+              stroke="#004fff"
+              strokeWidth={1}
+            />
+            <Text
+              text="✓"
+              width={CHECK_RADIUS * 2}
+              height={CHECK_RADIUS * 2}
+              x={-CHECK_RADIUS}
+              y={-CHECK_RADIUS}
+              align="center"
+              verticalAlign="middle"
+              fill="#004fff"
+              fontSize={11}
+              fontFamily={LABEL_FONT_FAMILY}
+              fontStyle="bold"
+            />
+          </Group>
+        ) : null}
         {/* 题号标签：反缩放 Group，内部一律 css px */}
         <Group
           x={rect.w - labelWidth / scale}
@@ -240,7 +311,7 @@ function QuestionRectShape({
             width={labelWidth}
             height={LABEL_HEIGHT}
             cornerRadius={[0, 0, 4, 4]}
-            fill={isActive ? LABEL_BG_ACTIVE : LABEL_BG}
+            fill={isSelected ? LABEL_BG_ACTIVE : LABEL_BG}
           />
           {/* 文字定位照搬原型：x/y = LABEL_STYLE.padding，且不设 width/height
               （原型里的 align/verticalAlign 因此并不生效，实际是 6px 左对齐） */}
@@ -251,12 +322,12 @@ function QuestionRectShape({
             fontSize={LABEL_FONT_SIZE}
             fontFamily={LABEL_FONT_FAMILY}
             fontStyle={LABEL_FONT_WEIGHT}
-            fill={isActive ? LABEL_TEXT_ACTIVE : LABEL_TEXT}
+            fill={isSelected ? LABEL_TEXT_ACTIVE : LABEL_TEXT}
             listening={false}
           />
         </Group>
       </Group>
-      {isActive ? (
+      {isPrimary ? (
         <Transformer
           ref={trRef}
           flipEnabled={false}
@@ -286,11 +357,13 @@ function QuestionRectShape({
   );
 }
 
-/** 每页一个 Konva Stage：背景图 + 题目矩形（选中/拖拽/缩放/画新框） */
+/** 每页一个 Konva Stage：背景图 + 题目矩形（选中/多选/拖拽/缩放/画新框） */
 export default function KonvaPageStage({
   page,
   pageIndex,
-  activeQuestionId,
+  selectedQuestionIds,
+  pageQuestions,
+  pagesMetaById,
   imageSrc,
   onSelectQuestion,
   onDeselectQuestion,
@@ -305,14 +378,16 @@ export default function KonvaPageStage({
   const [draft, setDraft] = useState<DraftRect | null>(null);
   // 悬停高亮按题联动：同题所有框一起高亮，与选中联动一致
   const [hoverQuestionId, setHoverQuestionId] = useState<string | null>(null);
+  /** 主选中 = 多选集合末位：Transformer/键盘微调的基准 */
+  const primaryQuestionId = selectedQuestionIds.at(-1) ?? null;
 
   // 缩放比 = 适应宽度基准比 × 用户缩放倍数；框/标签/草稿均随其实时等比更新
   const stageWidth = baseWidth * zoom;
   const scale = page.width > 0 && stageWidth > 0 ? stageWidth / page.width : 0;
 
   const sortedQuestions = useMemo(
-    () => page.questions.slice().sort((a, b) => a.no - b.no),
-    [page.questions],
+    () => pageQuestions.slice().sort((a, b) => a.no - b.no),
+    [pageQuestions],
   );
 
   // 背景图加载（dataURL / 远程 URL 均可）
@@ -401,12 +476,20 @@ export default function KonvaPageStage({
 
   /** 悬浮锚点 + 方向键：对角固定，沿锚点活动边缩放（页面像素坐标，clamp + MIN_SIZE） */
   const resizeByKeyboard = useCallback(
-    (questionId: string, rectIndex: number, anchor: string, dx: number, dy: number) => {
-      const q = page.questions.find((item) => item.id === questionId);
+    (
+      questionId: string,
+      rectIndex: number,
+      anchor: string,
+      dx: number,
+      dy: number,
+    ) => {
+      const q = pageQuestions.find((item) => item.id === questionId);
       const rect = q ? getQuestionRects(q)[rectIndex] : undefined;
       if (!rect) return;
       const edges = ANCHOR_EDGES[anchor];
       if (!edges) return;
+      // 跨页题的框按所在页宽高 clamp
+      const meta = pagesMetaById.get(rect.pageId ?? page.id) ?? page;
       let { x, y, w, h } = rect;
       if (edges.h === 'l') {
         const nx = clamp(x + dx, 0, x + w - MIN_SIZE);
@@ -414,7 +497,7 @@ export default function KonvaPageStage({
         x = nx;
       }
       if (edges.h === 'r') {
-        w = clamp(w + dx, MIN_SIZE, Math.max(MIN_SIZE, page.width - x));
+        w = clamp(w + dx, MIN_SIZE, Math.max(MIN_SIZE, meta.width - x));
       }
       if (edges.v === 't') {
         const ny = clamp(y + dy, 0, y + h - MIN_SIZE);
@@ -422,26 +505,38 @@ export default function KonvaPageStage({
         y = ny;
       }
       if (edges.v === 'b') {
-        h = clamp(h + dy, MIN_SIZE, Math.max(MIN_SIZE, page.height - y));
+        h = clamp(h + dy, MIN_SIZE, Math.max(MIN_SIZE, meta.height - y));
       }
       onChangeRect(pageIndex, questionId, rectIndex, { x, y, w, h });
     },
-    [page, pageIndex, onChangeRect],
+    [page, pageQuestions, pagesMetaById, pageIndex, onChangeRect],
   );
 
-  /** 仅选中 + 方向键：整体平移选中题目的所有框（以整体包围盒 clamp，保持相对位置） */
+  /** 仅选中 + 方向键：整体平移选中题目的所有框（跨页题逐页按包围盒 clamp 后取最严格位移，保持相对位置） */
   const moveByKeyboard = useCallback(
     (questionId: string, dx: number, dy: number) => {
-      const q = page.questions.find((item) => item.id === questionId);
+      const q = pageQuestions.find((item) => item.id === questionId);
       if (!q) return;
       const rects = getQuestionRects(q);
       if (!rects.length) return;
-      const minX = Math.min(...rects.map((r) => r.x));
-      const minY = Math.min(...rects.map((r) => r.y));
-      const maxX = Math.max(...rects.map((r) => r.x + r.w));
-      const maxY = Math.max(...rects.map((r) => r.y + r.h));
-      const mx = clamp(dx, -minX, Math.max(0, page.width - maxX));
-      const my = clamp(dy, -minY, Math.max(0, page.height - maxY));
+      const byPage = new Map<string, typeof rects>();
+      for (const rect of rects) {
+        const pid = rect.pageId ?? page.id;
+        const list = byPage.get(pid) ?? [];
+        list.push(rect);
+        byPage.set(pid, list);
+      }
+      let mx = dx;
+      let my = dy;
+      for (const [pid, list] of byPage) {
+        const meta = pagesMetaById.get(pid) ?? page;
+        const minX = Math.min(...list.map((r) => r.x));
+        const minY = Math.min(...list.map((r) => r.y));
+        const maxX = Math.max(...list.map((r) => r.x + r.w));
+        const maxY = Math.max(...list.map((r) => r.y + r.h));
+        mx = clamp(mx, -minX, Math.max(0, meta.width - maxX));
+        my = clamp(my, -minY, Math.max(0, meta.height - maxY));
+      }
       if (mx === 0 && my === 0) return;
       rects.forEach((rect, rectIndex) => {
         onChangeRect(pageIndex, questionId, rectIndex, {
@@ -452,12 +547,11 @@ export default function KonvaPageStage({
         });
       });
     },
-    [page, pageIndex, onChangeRect],
+    [page, pageQuestions, pagesMetaById, pageIndex, onChangeRect],
   );
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (!activeQuestionId) return;
       const target = e.target as HTMLElement | null;
       if (
         target &&
@@ -467,6 +561,14 @@ export default function KonvaPageStage({
       ) {
         return;
       }
+      if (e.key === 'Escape') {
+        if (selectedQuestionIds.length) {
+          e.preventDefault();
+          onDeselectQuestion();
+        }
+        return;
+      }
+      if (!primaryQuestionId) return;
       const deltas: Record<string, [number, number]> = {
         ArrowLeft: [-1, 0],
         ArrowRight: [1, 0],
@@ -480,15 +582,27 @@ export default function KonvaPageStage({
       const dx = delta[0] * step;
       const dy = delta[1] * step;
       const hover = anchorHoverRef.current;
-      if (hover && hover.questionId === activeQuestionId) {
-        resizeByKeyboard(hover.questionId, hover.rectIndex, hover.anchor, dx, dy);
+      if (hover && hover.questionId === primaryQuestionId) {
+        resizeByKeyboard(
+          hover.questionId,
+          hover.rectIndex,
+          hover.anchor,
+          dx,
+          dy,
+        );
       } else {
-        moveByKeyboard(activeQuestionId, dx, dy);
+        moveByKeyboard(primaryQuestionId, dx, dy);
       }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [activeQuestionId, resizeByKeyboard, moveByKeyboard]);
+  }, [
+    selectedQuestionIds,
+    primaryQuestionId,
+    onDeselectQuestion,
+    resizeByKeyboard,
+    moveByKeyboard,
+  ]);
 
   return (
     <div style={stageWidth > 0 ? { width: stageWidth } : undefined}>
@@ -519,29 +633,38 @@ export default function KonvaPageStage({
           </Layer>
           <Layer>
             {sortedQuestions.flatMap((q) => {
-              const rects = getQuestionRects(q);
-              return rects.map((rect, rectIndex) => (
-                <QuestionRectShape
-                  // biome-ignore lint/suspicious/noArrayIndexKey: 矩形无稳定 id，按坐标做 key 会在拖拽时重挂载并丢失 Transformer
-                  key={`${q.id}-${rectIndex}`}
-                  question={q}
-                  rect={rect}
-                  rectIndex={rectIndex}
-                  rectsCount={rects.length}
-                  pageIndex={pageIndex}
-                  page={page}
-                  scale={scale}
-                  isActive={q.id === activeQuestionId}
-                  isHovered={q.id === hoverQuestionId}
-                  dimmed={!!draft}
-                  onSelectQuestion={onSelectQuestion}
-                  onHoverQuestion={setHoverQuestionId}
-                  onHoverAnchor={(anchor) =>
-                    handleHoverAnchor(q.id, rectIndex, anchor)
-                  }
-                  onChangeRect={onChangeRect}
-                />
-              ));
+              const allRects = getQuestionRects(q);
+              // 跨页题：本页 Stage 只渲染属于本页的框；rectIndex 保持全局索引
+              const primaryPageId = allRects[0]?.pageId ?? page.id;
+              return allRects.flatMap((rect, rectIndex) => {
+                if ((rect.pageId ?? page.id) !== page.id) return [];
+                return [
+                  <QuestionRectShape
+                    // biome-ignore lint/suspicious/noArrayIndexKey: 矩形无稳定 id，按坐标做 key 会在拖拽时重挂载并丢失 Transformer
+                    key={`${q.id}-${rectIndex}`}
+                    question={q}
+                    rect={rect}
+                    rectIndex={rectIndex}
+                    rectsCount={allRects.length}
+                    pageIndex={pageIndex}
+                    page={page}
+                    scale={scale}
+                    isPrimary={q.id === primaryQuestionId}
+                    isSelected={selectedQuestionIds.includes(q.id)}
+                    showPageSuffix={
+                      rect.pageId !== undefined && rect.pageId !== primaryPageId
+                    }
+                    isHovered={q.id === hoverQuestionId}
+                    dimmed={!!draft}
+                    onSelectQuestion={onSelectQuestion}
+                    onHoverQuestion={setHoverQuestionId}
+                    onHoverAnchor={(anchor) =>
+                      handleHoverAnchor(q.id, rectIndex, anchor)
+                    }
+                    onChangeRect={onChangeRect}
+                  />,
+                ];
+              });
             })}
             {draft
               ? (() => {

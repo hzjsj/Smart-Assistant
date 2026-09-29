@@ -10,13 +10,7 @@ import {
   ScanOutlined,
 } from '@ant-design/icons';
 import { history } from '@umijs/max';
-import {
-  App,
-  Button,
-  Popconfirm,
-  Splitter,
-  Tooltip,
-} from 'antd';
+import { App, Button, Popconfirm, Splitter, Tooltip } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CACHE_KEY,
@@ -25,7 +19,7 @@ import {
   PDF_MAX_SIZE,
   QUESTION_TYPES,
 } from '../constants';
-import type { QietiPage, Rect } from '../data';
+import type { QietiPage, QietiQuestion, QuestionRect, Rect } from '../data';
 import { cutQuestions, saveSnapshot, uploadImage } from '../service';
 import { createRequestScheduler, downloadTextFile } from '../utils/exportUtils';
 import {
@@ -39,8 +33,10 @@ import {
   ensureQuestionRects,
   getQuestionPrimaryRect,
   getQuestionRects,
+  isMergedQuestion,
   mapApiQuestionType,
   mergeCutApiEntries,
+  mergeQuestions,
   normalizeQuestionInfo,
   normalizeQuestionShape,
   rectsFromPosList,
@@ -48,8 +44,9 @@ import {
   serializeRect,
   syncQuestionRect,
   toPercentRect,
+  unmergeQuestion,
 } from '../utils/questionUtils';
-import PageViewer from './components/PageViewer';
+import PageViewer, { type MergeBarInfo } from './components/PageViewer';
 import QuestionList from './components/QuestionList';
 import UploadCard from './components/UploadCard';
 import { useStyles } from './styles';
@@ -87,7 +84,9 @@ export default function QietiCutPage() {
 
   const [pages, setPages] = useState<QietiPage[]>([]);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
-  const [activeQuestionId, setActiveQuestionId] = useState<string | null>(null);
+  /** 多选集合（Ctrl+点击合并用）；主选中 = 集合末位，兼容原单选语义 */
+  const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
+  const activeQuestionId = selectedQuestionIds.at(-1) ?? null;
   const [detecting, setDetecting] = useState(false);
   const [exportingMd, setExportingMd] = useState(false);
   /** 一题多框：接口碎片默认归并为一题；关闭后每个碎片独立成题 */
@@ -139,22 +138,82 @@ export default function QietiCutPage() {
     [pages],
   );
 
+  const pageIndexById = useMemo(
+    () => new Map(pages.map((page, index) => [page.id, index] as const)),
+    [pages],
+  );
+
   const questionPreviewList = useMemo(
     () =>
-      allQuestions.map((q) => ({
-        id: q.id,
-        no: q.no,
-        pageIndex: q.pageIndex,
-        type: q.type,
-        mergedImage: q.mergedImage || '',
-        figures: q.info?.figures || [],
-        stemText: q.info?.stemText || '',
-        optionTexts: q.info?.optionTexts || [],
-        subquestionTexts: q.info?.subquestionTexts || [],
-        fullText: q.info?.fullText || '',
-      })),
-    [allQuestions],
+      allQuestions.map((q) => {
+        const rects = getQuestionRects(q);
+        const pageIds = new Set(
+          rects.map((rect) => rect.pageId ?? pages[q.pageIndex]?.id ?? ''),
+        );
+        const pageIndices = [...pageIds]
+          .map((pid) => pageIndexById.get(pid))
+          .filter((v): v is number => v !== undefined)
+          .sort((a, b) => a - b);
+        return {
+          id: q.id,
+          no: q.no,
+          pageIndex: q.pageIndex,
+          pageIndices: pageIndices.length ? pageIndices : [q.pageIndex],
+          type: q.type,
+          rectCount: rects.length,
+          mergedImage: q.mergedImage || '',
+          figures: q.info?.figures || [],
+          stemText: q.info?.stemText || '',
+          optionTexts: q.info?.optionTexts || [],
+          subquestionTexts: q.info?.subquestionTexts || [],
+          fullText: q.info?.fullText || '',
+        };
+      }),
+    [allQuestions, pages, pageIndexById],
   );
+
+  /** 每页应渲染的题目（框在该页的题；跨页题会同时出现在多页），供画布按页渲染 */
+  const questionsByPageId = useMemo(() => {
+    const map = new Map<string, QietiQuestion[]>();
+    for (const page of pages) map.set(page.id, []);
+    for (const page of pages) {
+      for (const question of page.questions) {
+        for (const rect of getQuestionRects(question)) {
+          const list = map.get(rect.pageId ?? page.id);
+          if (list && !list.some((item) => item.id === question.id)) {
+            list.push(question);
+          }
+        }
+      }
+    }
+    return map;
+  }, [pages]);
+
+  /** 页面尺寸查询表：跨页题的框按所在页宽高 clamp */
+  const pagesMetaById = useMemo(
+    () =>
+      new Map(
+        pages.map((page) => [
+          page.id,
+          { id: page.id, width: page.width, height: page.height },
+        ]),
+      ),
+    [pages],
+  );
+
+  /** 浮动操作条摘要：多选数量/分布页数/主选中是否合并题 */
+  const mergeBar = useMemo<MergeBarInfo>(() => {
+    const selected = allQuestions.filter((q) =>
+      selectedQuestionIds.includes(q.id),
+    );
+    return {
+      count: selected.length,
+      pageCount: new Set(selected.map((q) => q.pageIndex)).size,
+      primaryMerged: isMergedQuestion(
+        selected.find((q) => q.id === (selectedQuestionIds.at(-1) ?? null)),
+      ),
+    };
+  }, [allQuestions, selectedQuestionIds]);
 
   const nextQuestionNo = useCallback(
     () =>
@@ -191,7 +250,7 @@ export default function QietiCutPage() {
         const normalizedPages = cache.pages.map((page) => ({
           ...page,
           questions: Array.isArray(page.questions)
-            ? page.questions.map((q) => normalizeQuestionShape(q))
+            ? page.questions.map((q) => normalizeQuestionShape(q, page.id))
             : [],
         }));
         setPages(normalizedPages);
@@ -285,7 +344,7 @@ export default function QietiCutPage() {
         ];
         setPages(nextPages);
         setCurrentPageIndex(0);
-        setActiveQuestionId(null);
+        setSelectedQuestionIds([]);
         setHint(`已加载上传记录图片：${pageName}`);
         await autoDetectRef.current?.(nextPages);
       } catch (error) {
@@ -363,7 +422,7 @@ export default function QietiCutPage() {
 
     setPages(newPages);
     setCurrentPageIndex(0);
-    setActiveQuestionId(null);
+    setSelectedQuestionIds([]);
     setHint(`成功加载 ${newPages.length} 页`);
     await runAutoDetect(newPages);
   };
@@ -386,7 +445,7 @@ export default function QietiCutPage() {
 
     setPages(newPages);
     setCurrentPageIndex(0);
-    setActiveQuestionId(null);
+    setSelectedQuestionIds([]);
     setHint(`成功加载 ${newPages.length} 页`);
     await runAutoDetect(newPages);
   };
@@ -519,7 +578,7 @@ export default function QietiCutPage() {
         if (detectRunIdRef.current !== runId) return;
 
         setPages(next);
-        setActiveQuestionId(null);
+        setSelectedQuestionIds([]);
 
         if (failedMessages.length) {
           const summary = failedMessages.slice(0, 2).join('；');
@@ -599,16 +658,26 @@ export default function QietiCutPage() {
         questions: p.questions
           .slice()
           .sort((a, b) => a.no - b.no)
-          .map((q) => ({
-            no: q.no,
-            type: q.type,
-            rectPx: serializeRect(getQuestionPrimaryRect(q)),
-            rectPercent: toPercentRect(getQuestionPrimaryRect(q), p),
-            rectsPx: getQuestionRects(q).map((rect) => serializeRect(rect)),
-            rectsPercent: getQuestionRects(q).map((rect) =>
-              toPercentRect(rect, p),
-            ),
-          })),
+          .map((q) => {
+            const rects = getQuestionRects(q);
+            // 框可能寄存在其他页：百分比相对框所在页计算
+            const rectHost = (rect: QuestionRect) =>
+              pages.find((item) => item.id === (rect.pageId ?? p.id)) ?? p;
+            return {
+              no: q.no,
+              type: q.type,
+              rectPx: serializeRect(getQuestionPrimaryRect(q)),
+              rectPercent: toPercentRect(getQuestionPrimaryRect(q), p),
+              rectsPx: rects.map((rect) => ({
+                ...serializeRect(rect),
+                pageId: rect.pageId ?? p.id,
+              })),
+              rectsPercent: rects.map((rect) => ({
+                ...toPercentRect(rect, rectHost(rect)),
+                pageId: rect.pageId ?? p.id,
+              })),
+            };
+          }),
       })),
     };
 
@@ -630,14 +699,14 @@ export default function QietiCutPage() {
       reindexQuestions(next);
       return next;
     });
-    if (activeQuestionId === id) setActiveQuestionId(null);
+    setSelectedQuestionIds((prev) => prev.filter((item) => item !== id));
     message.success('题目已删除');
   };
 
   const switchPage = (index: number) => {
     if (index < 0 || index >= pages.length) return;
     setCurrentPageIndex(index);
-    setActiveQuestionId(null);
+    setSelectedQuestionIds([]);
     pageSectionRefs.current[index]?.scrollIntoView({
       block: 'start',
       behavior: 'smooth',
@@ -646,7 +715,7 @@ export default function QietiCutPage() {
 
   const locateQuestion = (pageIndex: number, questionId: string) => {
     setCurrentPageIndex(pageIndex);
-    setActiveQuestionId(questionId);
+    setSelectedQuestionIds([questionId]);
     pageSectionRefs.current[pageIndex]?.scrollIntoView({
       block: 'center',
       behavior: 'smooth',
@@ -656,7 +725,7 @@ export default function QietiCutPage() {
   const clearAll = () => {
     setPages([]);
     setCurrentPageIndex(0);
-    setActiveQuestionId(null);
+    setSelectedQuestionIds([]);
     localStorage.removeItem(CACHE_KEY);
     setHint('已清空');
   };
@@ -670,7 +739,8 @@ export default function QietiCutPage() {
     }
     modal.confirm({
       title: checked ? '开启一题多框合并' : '取消一题多框合并',
-      content: '切换后将重新自动识别，当前手动调整（画框/拖动/删除）会被覆盖，继续吗？',
+      content:
+        '切换后将重新自动识别，当前手动调整（画框/拖动/删除）会被覆盖，继续吗？',
       okText: '继续',
       cancelText: '取消',
       onOk: () => {
@@ -681,13 +751,94 @@ export default function QietiCutPage() {
     });
   };
 
-  // ─── 划题交互（Konva 画布回调：选中/拖拽/缩放/画新框）───────────────
-  const selectQuestion = (questionId: string, pageIndex: number) => {
-    setActiveQuestionId(questionId);
-    setCurrentPageIndex(pageIndex);
+  // ─── 手动合并 / 解除合并 ────────────────────────────────────────────
+  // 确认走内联面板（React 状态驱动）：当前环境 App.useApp 的 modal.confirm
+  // 在 onOk/cancel 后对话框滞留不关闭（handleMergeToggle 同样受影响），只能绕开
+  const [pendingConfirm, setPendingConfirm] = useState<
+    | {
+        kind: 'merge';
+        ids: string[];
+        primaryId: string;
+        rows: { id: string; no: number; pageIndex: number; primary: boolean }[];
+        pageCount: number;
+      }
+    | { kind: 'unmerge'; id: string; rectCount: number }
+    | null
+  >(null);
+
+  const handleMerge = () => {
+    const targets = allQuestions.filter((q) =>
+      selectedQuestionIds.includes(q.id),
+    );
+    if (targets.length < 2) return;
+    const sorted = [...targets].sort((a, b) => a.no - b.no);
+    const primary = sorted[0];
+    setPendingConfirm({
+      kind: 'merge',
+      ids: sorted.map((q) => q.id),
+      primaryId: primary.id,
+      rows: sorted.map((q) => ({
+        id: q.id,
+        no: q.no,
+        pageIndex: q.pageIndex,
+        primary: q.id === primary.id,
+      })),
+      pageCount: new Set(sorted.map((q) => q.pageIndex)).size,
+    });
   };
 
-  const deselectQuestion = () => setActiveQuestionId(null);
+  const handleUnmerge = (id: string) => {
+    const target = allQuestions.find((q) => q.id === id);
+    if (!isMergedQuestion(target)) return;
+    setPendingConfirm({
+      kind: 'unmerge',
+      id,
+      rectCount: getQuestionRects(target).length,
+    });
+  };
+
+  const handleConfirmOk = () => {
+    if (!pendingConfirm) return;
+    if (pendingConfirm.kind === 'merge') {
+      const { ids, primaryId } = pendingConfirm;
+      setPages((prev) => {
+        const next = mergeQuestions(prev, ids);
+        if (next === prev) return prev;
+        reindexQuestions(next);
+        return next;
+      });
+      setSelectedQuestionIds([primaryId]);
+      message.success('已合并为 1 题');
+    } else {
+      const { id } = pendingConfirm;
+      setPages((prev) => {
+        const next = unmergeQuestion(prev, id);
+        if (next === prev) return prev;
+        reindexQuestions(next);
+        return next;
+      });
+      setSelectedQuestionIds([id]);
+      message.success('已解除合并');
+    }
+    setPendingConfirm(null);
+  };
+
+  // ─── 划题交互（Konva 画布回调：选中/多选/拖拽/缩放/画新框）───────────
+  const selectQuestion = (
+    questionId: string,
+    pageIndex: number,
+    additive = false,
+  ) => {
+    setCurrentPageIndex(pageIndex);
+    setSelectedQuestionIds((prev) => {
+      if (!additive) return [questionId];
+      return prev.includes(questionId)
+        ? prev.filter((item) => item !== questionId)
+        : [...prev, questionId];
+    });
+  };
+
+  const deselectQuestion = () => setSelectedQuestionIds([]);
 
   const updateQuestionRect = (
     pageIndex: number,
@@ -724,7 +875,7 @@ export default function QietiCutPage() {
       );
       return next;
     });
-    setActiveQuestionId(id);
+    setSelectedQuestionIds([id]);
     setCurrentPageIndex(pageIndex);
   };
 
@@ -744,11 +895,18 @@ export default function QietiCutPage() {
                   onSelectPage={setCurrentPageIndex}
                   pageSectionRefs={pageSectionRefs}
                   thumbRefs={thumbRefs}
-                  activeQuestionId={activeQuestionId}
+                  selectedQuestionIds={selectedQuestionIds}
+                  questionsByPageId={questionsByPageId}
+                  pagesMetaById={pagesMetaById}
+                  mergeBar={mergeBar}
                   onSelectQuestion={selectQuestion}
                   onDeselectQuestion={deselectQuestion}
                   onChangeRect={updateQuestionRect}
                   onCreateQuestion={createQuestionFromRect}
+                  onMerge={handleMerge}
+                  onUnmerge={() => {
+                    if (activeQuestionId) handleUnmerge(activeQuestionId);
+                  }}
                   getPageImageSrc={getPageImageSrc}
                 />
               )}
@@ -757,9 +915,13 @@ export default function QietiCutPage() {
           <Splitter.Panel min={280} max="60%" defaultSize={420}>
             <QuestionList
               questionPreviewList={questionPreviewList}
-              activeQuestionId={activeQuestionId}
+              selectedQuestionIds={selectedQuestionIds}
               onLocateQuestion={locateQuestion}
+              onToggleSelect={(id, pageIndex) =>
+                selectQuestion(id, pageIndex, true)
+              }
               onDeleteQuestion={deleteQuestion}
+              onUnmergeQuestion={handleUnmerge}
               onDeselectQuestion={deselectQuestion}
             />
           </Splitter.Panel>
@@ -862,6 +1024,54 @@ export default function QietiCutPage() {
             onClick={() => setNavOpen(true)}
           />
         </Tooltip>
+      ) : null}
+      {/* 合并/解除合并确认：内联面板（不用 antd Modal —— 当前环境弹层关闭动画
+          事件不触发，确认框会滞留挡屏；内联渲染无传送门/动画，行为可靠） */}
+      {pendingConfirm ? (
+        <div
+          className={styles.confirmOverlay}
+          onClick={() => setPendingConfirm(null)}
+        >
+          <div
+            className={styles.confirmCard}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={styles.confirmTitle}>
+              {pendingConfirm.kind === 'merge'
+                ? `合并 ${pendingConfirm.rows.length} 题为 1 题${
+                    pendingConfirm.pageCount > 1
+                      ? `（跨 ${pendingConfirm.pageCount} 页）`
+                      : ''
+                  }`
+                : `解除合并：拆分为 ${pendingConfirm.rectCount} 道独立题目`}
+            </div>
+            {pendingConfirm.kind === 'merge' ? (
+              <div className={styles.confirmBody}>
+                {pendingConfirm.rows.map((row) => (
+                  <div key={row.id}>
+                    {row.primary ? '┌' : '├'} 题{row.no}（第 {row.pageIndex + 1}{' '}
+                    页）
+                    {row.primary ? ' ← 保留题号与内容' : '：框并入，内容拼接'}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className={styles.confirmBody}>
+                首框保留题号与内容，其余框拆出为空内容新题（落回框所在页）。
+              </div>
+            )}
+            <div className={styles.confirmWarning}>
+              ⚠ {pendingConfirm.kind === 'merge' ? '合并' : '拆分'}
+              后不可自动撤销
+            </div>
+            <div className={styles.confirmActions}>
+              <Button onClick={() => setPendingConfirm(null)}>取消</Button>
+              <Button type="primary" onClick={handleConfirmOk}>
+                {pendingConfirm.kind === 'merge' ? '确认合并' : '确认拆分'}
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </>
   );

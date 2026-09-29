@@ -52,6 +52,69 @@ export const useStyles = createStyles(({ token, css }) => ({
     padding: ${token.paddingXS}px;
     background: ${token.colorBgLayout};
   `,
+  /* 合并浮动操作条：sticky 吸顶悬浮（height 0 不占布局空间），内容居中 */
+  mergeBarSticky: css`
+    position: sticky;
+    top: 4px;
+    z-index: 30;
+    display: flex;
+    justify-content: center;
+    height: 0;
+    pointer-events: none;
+  `,
+  mergeActionBar: css`
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: ${token.marginXS}px;
+    padding: 4px 8px 4px 14px;
+    background: ${token.colorBgContainer};
+    border: 1px solid ${token.colorBorderSecondary};
+    border-radius: 999px;
+    box-shadow: ${token.boxShadowSecondary};
+  `,
+  mergeBarText: css`
+    font-size: ${token.fontSize}px;
+    font-weight: 600;
+    white-space: nowrap;
+  `,
+  /* 合并/解除合并确认：内联遮罩 + 居中卡片（无传送门无动画，行为可靠） */
+  confirmOverlay: css`
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+  `,
+  confirmCard: css`
+    width: 430px;
+    max-width: calc(100vw - 48px);
+    background: ${token.colorBgContainer};
+    border-radius: ${token.borderRadiusLG}px;
+    box-shadow: ${token.boxShadowSecondary};
+    padding: ${token.paddingLG}px;
+  `,
+  confirmTitle: css`
+    font-size: ${token.fontSizeLG}px;
+    font-weight: 600;
+    margin-bottom: ${token.margin}px;
+  `,
+  confirmBody: css`
+    color: ${token.colorText};
+    line-height: 1.7;
+  `,
+  confirmWarning: css`
+    margin-top: ${token.margin}px;
+    color: ${token.colorWarning};
+  `,
+  confirmActions: css`
+    display: flex;
+    justify-content: flex-end;
+    gap: ${token.marginXS}px;
+    margin-top: ${token.marginLG}px;
+  `,
   pageBlock: css`
     border: 1px solid ${token.colorBorderSecondary};
     border-radius: ${token.borderRadiusLG}px;
@@ -130,7 +193,13 @@ export const useStyles = createStyles(({ token, css }) => ({
     &:hover {
       border-color: ${token.colorPrimaryBorderHover};
     }
-    /* 选中态：对齐 test/qieti 原型的选中行高亮 */
+    /* 多选态：左侧蓝竖条 + 蓝描边（Ctrl+点选合并用） */
+    &.selected {
+      border-color: ${token.colorPrimary};
+      box-shadow: inset 3px 0 0 ${token.colorPrimary};
+      background: rgba(0, 79, 255, 0.03);
+    }
+    /* 选中态（主选中）：对齐 test/qieti 原型的选中行高亮 */
     &.active {
       border-color: ${token.colorPrimary};
       background: ${token.colorPrimaryBg};

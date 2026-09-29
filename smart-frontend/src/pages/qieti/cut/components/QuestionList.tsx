@@ -1,9 +1,19 @@
-import { PictureOutlined } from '@ant-design/icons';
-import { Button, Card, Empty, Image, Space, Tag, Tooltip } from 'antd';
+import { PictureOutlined, ScissorOutlined } from '@ant-design/icons';
+import {
+  Button,
+  Card,
+  Empty,
+  Image,
+  Popconfirm,
+  Space,
+  Tag,
+  Tooltip,
+} from 'antd';
 import {
   memo,
   useDeferredValue,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -26,23 +36,34 @@ const TYPE_COLORS: Record<string, string> = {
 
 interface QuestionListProps {
   questionPreviewList: QuestionPreview[];
-  activeQuestionId: string | null;
+  /** 多选集合（Ctrl+点击合并用）；主选中 = 末位 */
+  selectedQuestionIds: string[];
   onLocateQuestion: (pageIndex: number, questionId: string) => void;
+  /** Ctrl+点击列表项：加入/移出多选集合 */
+  onToggleSelect: (questionId: string, pageIndex: number) => void;
   onDeleteQuestion: (id: string) => void;
+  /** 解除合并（拆分） */
+  onUnmergeQuestion: (id: string) => void;
   /** 用户手动滚动列表时清除选中（避免自动定位把列表拽回选中题） */
   onDeselectQuestion: () => void;
 }
 
 const QuestionItem = memo(function QuestionItem({
   preview,
-  isActive,
+  isSelected,
+  isPrimary,
   onLocateQuestion,
+  onToggleSelect,
+  onUnmergeQuestion,
   onDeleteQuestion,
   onMeasure,
 }: {
   preview: QuestionPreview;
-  isActive: boolean;
+  isSelected: boolean;
+  isPrimary: boolean;
   onLocateQuestion: (pageIndex: number, questionId: string) => void;
+  onToggleSelect: (questionId: string, pageIndex: number) => void;
+  onUnmergeQuestion: (id: string) => void;
   onDeleteQuestion: (id: string) => void;
   onMeasure: (id: string, height: number) => void;
 }) {
@@ -69,17 +90,40 @@ const QuestionItem = memo(function QuestionItem({
     return () => observer.disconnect();
   }, [preview.id, onMeasure]);
 
+  // 跨页题页码显示："第 1·2 页"；单页与现状一致
+  const pageLabel =
+    preview.pageIndices.length > 1
+      ? `第 ${preview.pageIndices.map((i) => i + 1).join('·')} 页`
+      : `第 ${preview.pageIndex + 1} 页`;
+
   return (
     <div
       ref={itemRef}
-      className={cx(styles.questionItem, isActive && 'active')}
-      onClick={() => onLocateQuestion(preview.pageIndex, preview.id)}
+      className={cx(
+        styles.questionItem,
+        isSelected && 'selected',
+        isPrimary && 'active',
+      )}
+      onClick={(e) => {
+        if (e.ctrlKey || e.metaKey) {
+          onToggleSelect(preview.id, preview.pageIndex);
+          return;
+        }
+        onLocateQuestion(preview.pageIndex, preview.id);
+      }}
     >
       <div className={styles.qRow}>
         <span className={styles.qId}>
-          题号 {preview.no} · 第 {preview.pageIndex + 1} 页
+          题号 {preview.no} · {pageLabel}
         </span>
         <Space size={4}>
+          {preview.rectCount > 1 ? (
+            <Tooltip title="一题多框（合并题）" placement="top">
+              <Tag color="geekblue" style={{ marginInlineEnd: 0 }}>
+                已合并·{preview.rectCount}框
+              </Tag>
+            </Tooltip>
+          ) : null}
           {preview.type ? (
             <Tag
               color={TYPE_COLORS[preview.type] ?? 'default'}
@@ -106,6 +150,23 @@ const QuestionItem = memo(function QuestionItem({
                 图片
               </Button>
             </Tooltip>
+          ) : null}
+          {preview.rectCount > 1 ? (
+            <Popconfirm
+              title={`拆分为 ${preview.rectCount} 道独立题目？`}
+              description="首框保留内容，其余框拆出为空内容新题"
+              okText="拆分"
+              cancelText="取消"
+              onConfirm={() => onUnmergeQuestion(preview.id)}
+            >
+              <Button
+                size="small"
+                icon={<ScissorOutlined />}
+                onClick={(e) => e.stopPropagation()}
+              >
+                拆分
+              </Button>
+            </Popconfirm>
           ) : null}
           <Button
             size="small"
@@ -158,9 +219,11 @@ function findIndexByOffset(offsets: number[], y: number): number {
 /** 右侧题目列表：虚拟滚动（实测高度 + 未测项估算），题目多时不卡、选中定位准 */
 export default function QuestionList({
   questionPreviewList,
-  activeQuestionId,
+  selectedQuestionIds,
   onLocateQuestion,
+  onToggleSelect,
   onDeleteQuestion,
+  onUnmergeQuestion,
   onDeselectQuestion,
 }: QuestionListProps) {
   const { styles } = useStyles();
@@ -171,13 +234,15 @@ export default function QuestionList({
     () => new Map(),
   );
   const deferredList = useDeferredValue(questionPreviewList);
+  /** 主选中 = 多选集合末位（列表定位/滚动跟随的基准） */
+  const activeQuestionId = selectedQuestionIds.at(-1) ?? null;
   /** 程序性自动滚动的时间窗口（到点前视为自动滚动，期间的 scroll 事件不取消选中） */
   const autoScrollUntilRef = useRef(0);
   /** 供 scroll 回调读取最新选中值，避免依赖闭包过期 */
-  const activeIdRef = useRef(activeQuestionId);
+  const selectedRef = useRef(selectedQuestionIds);
   useEffect(() => {
-    activeIdRef.current = activeQuestionId;
-  }, [activeQuestionId]);
+    selectedRef.current = selectedQuestionIds;
+  }, [selectedQuestionIds]);
 
   useEffect(() => {
     const el = listRef.current;
@@ -236,11 +301,16 @@ export default function QuestionList({
     if (!activeQuestionId) return;
     const el = listRef.current;
     if (!el) return;
-    const index = deferredList.findIndex((item) => item.id === activeQuestionId);
+    const index = deferredList.findIndex(
+      (item) => item.id === activeQuestionId,
+    );
     if (index < 0) return;
     const itemTop = layout[index];
     const itemHeight = layout[index + 1] - layout[index];
-    if (itemTop < el.scrollTop || itemTop + itemHeight > el.scrollTop + el.clientHeight) {
+    if (
+      itemTop < el.scrollTop ||
+      itemTop + itemHeight > el.scrollTop + el.clientHeight
+    ) {
       // 标记自动滚动窗口（滚动动画+测量回写约 0.7s），期间不视为用户滚动
       autoScrollUntilRef.current = Date.now() + 700;
       el.scrollTo({
@@ -249,6 +319,13 @@ export default function QuestionList({
       });
     }
   }, [activeQuestionId, deferredList, layout]);
+
+  // 条目数变化（合并/拆分/删除）时内容高度骤变，浏览器钳制 scrollTop 触发
+  // scroll 事件——用 layout effect 在 DOM 提交前开窗，短窗口内不视为用户滚动，
+  // 避免合并/拆分后刚设置的选中被立即清除
+  useLayoutEffect(() => {
+    autoScrollUntilRef.current = Date.now() + 250;
+  }, [deferredList.length]);
 
   const total = deferredList.length;
   const startIndex = Math.max(
@@ -295,7 +372,10 @@ export default function QuestionList({
         onScroll={(e) => {
           setScrollTop(e.currentTarget.scrollTop);
           // 用户手动滚动：取消选中（自动滚动窗口内的滚动除外）
-          if (Date.now() >= autoScrollUntilRef.current && activeIdRef.current) {
+          if (
+            Date.now() >= autoScrollUntilRef.current &&
+            selectedRef.current.length
+          ) {
             onDeselectQuestion();
           }
         }}
@@ -313,8 +393,11 @@ export default function QuestionList({
           <QuestionItem
             key={preview.id}
             preview={preview}
-            isActive={preview.id === activeQuestionId}
+            isSelected={selectedQuestionIds.includes(preview.id)}
+            isPrimary={preview.id === activeQuestionId}
             onLocateQuestion={onLocateQuestion}
+            onToggleSelect={onToggleSelect}
+            onUnmergeQuestion={onUnmergeQuestion}
             onDeleteQuestion={onDeleteQuestion}
             onMeasure={handleMeasure}
           />

@@ -1,5 +1,11 @@
 import { MIN_SIZE, QUESTION_TYPES } from '../constants';
-import type { CutApiQuestion, QietiPage, QietiQuestion, Rect } from '../data';
+import type {
+  CutApiQuestion,
+  QietiPage,
+  QietiQuestion,
+  QuestionRect,
+  Rect,
+} from '../data';
 
 export function createId(): string {
   if (typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID) {
@@ -45,14 +51,14 @@ export function toPercentRect(rect: Rect, page: QietiPage): Rect {
 
 export function getQuestionRects(
   question: QietiQuestion | null | undefined,
-): Rect[] {
+): QuestionRect[] {
   if (Array.isArray(question?.rects) && question.rects.length)
     return question.rects;
   if (question?.rect) return [question.rect];
   return [];
 }
 
-export function ensureQuestionRects(question: QietiQuestion): Rect[] {
+export function ensureQuestionRects(question: QietiQuestion): QuestionRect[] {
   const rects = getQuestionRects(question).map((rect) => ({ ...rect }));
   question.rects = rects;
   if (!question.rect && rects[0]) question.rect = { ...rects[0] };
@@ -75,9 +81,12 @@ export function syncQuestionRect(question: QietiQuestion): void {
 
 export function normalizeQuestionShape(
   question: Partial<QietiQuestion>,
+  pageId?: string,
 ): QietiQuestion {
   const rects = getQuestionRects(question as QietiQuestion).map((rect) => ({
     ...rect,
+    // 老数据无 pageId：归属题目所在页（打开缓存/快照即自动迁移）
+    pageId: rect.pageId ?? pageId,
   }));
   return {
     id: question.id ?? createId(),
@@ -251,7 +260,10 @@ function mergeCutApiInfo(target: CutApiInfo, source: CutApiInfo): void {
     ...(target.subquestion ?? []),
     ...(source.subquestion ?? []),
   ];
-  target.figure = [...toFigureArray(target.figure), ...toFigureArray(source.figure)];
+  target.figure = [
+    ...toFigureArray(target.figure),
+    ...toFigureArray(source.figure),
+  ];
   if (!isKnownApiType(target.type) && isKnownApiType(source.type)) {
     target.type = source.type;
   }
@@ -263,14 +275,15 @@ function mergeCutApiInfo(target: CutApiInfo, source: CutApiInfo): void {
  * 不归并会在页面上碎成几十个框、题号乱跳。
  * 注：无题干且无前序题目的条目（如跨页续排的选项）会自成一组。
  */
-export function mergeCutApiEntries(entries: CutApiQuestion[]): CutApiQuestion[] {
+export function mergeCutApiEntries(
+  entries: CutApiQuestion[],
+): CutApiQuestion[] {
   const merged: CutApiQuestion[] = [];
 
   for (const entry of entries) {
     if (!entry) continue;
     const hasStem = Boolean(normalizeText(entry.info?.stem?.text).trim());
-    const target =
-      hasStem || !merged.length ? null : merged[merged.length - 1];
+    const target = hasStem || !merged.length ? null : merged[merged.length - 1];
 
     if (!target) {
       merged.push({
@@ -288,17 +301,151 @@ export function mergeCutApiEntries(entries: CutApiQuestion[]): CutApiQuestion[] 
       ...(entry.sub_images ?? []),
     ];
     if (!target.merged_image) target.merged_image = entry.merged_image;
-    mergeCutApiInfo(target.info as CutApiInfo, (entry.info ?? {}) as CutApiInfo);
+    mergeCutApiInfo(
+      target.info as CutApiInfo,
+      (entry.info ?? {}) as CutApiInfo,
+    );
   }
 
   return merged;
 }
 
-/** pos_list 多边形 → 页面坐标系内的矩形（clamp 到页面边界，保证最小尺寸） */
-export function rectsFromPosList(posList: unknown, page: QietiPage): Rect[] {
+// ─── 手动合并 / 解除合并（支持跨页：框携带 pageId）─────────────────────
+
+/** 是否为合并题（一题多框） */
+export function isMergedQuestion(
+  question: QietiQuestion | null | undefined,
+): boolean {
+  return getQuestionRects(question).length > 1;
+}
+
+/** 题目所有框涉及的页 id（按首框优先顺序去重；不含缺省 pageId 的老数据框） */
+export function getQuestionPageIds(question: QietiQuestion): string[] {
+  const pageIds: string[] = [];
+  for (const rect of getQuestionRects(question)) {
+    if (rect.pageId && !pageIds.includes(rect.pageId)) {
+      pageIds.push(rect.pageId);
+    }
+  }
+  return pageIds;
+}
+
+/** 题目内容归并：题干缺才补、选项/小题/插图拼接、全文重算（语义对齐接口碎片的 mergeCutApiInfo） */
+function mergeQuestionInfo(
+  target: QietiQuestion['info'],
+  source: QietiQuestion['info'],
+): void {
+  if (!target.stemText.trim() && source.stemText.trim()) {
+    target.stemText = source.stemText;
+  }
+  target.optionTexts = [...target.optionTexts, ...source.optionTexts];
+  target.subquestionTexts = [
+    ...target.subquestionTexts,
+    ...source.subquestionTexts,
+  ];
+  target.figures = [...target.figures, ...source.figures];
+  target.fullText = [
+    target.stemText,
+    ...target.optionTexts,
+    ...target.subquestionTexts,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+/**
+ * 合并多题为一题（支持跨页）：主题取 no 最小者（保留 id/no/type/mergedImage 及所在页），
+ * 其余题的框按 no 顺序拼入 rects（各框保留自身 pageId），内容字段按既有规则归并，
+ * 被合并题从所在页删除。返回新 pages（入参不变）；ids 无效或不足 2 题时原样返回。
+ */
+export function mergeQuestions(pages: QietiPage[], ids: string[]): QietiPage[] {
+  if (ids.length < 2) return pages;
+  const next = structuredClone(pages);
+  const found: { question: QietiQuestion; page: QietiPage }[] = [];
+  for (const page of next) {
+    for (const question of page.questions) {
+      if (ids.includes(question.id)) found.push({ question, page });
+    }
+  }
+  if (found.length < 2) return pages;
+
+  found.sort((a, b) => a.question.no - b.question.no);
+  const [primary, ...others] = found;
+
+  const rects = ensureQuestionRects(primary.question);
+  for (const { question } of others) {
+    rects.push(...ensureQuestionRects(question).map((rect) => ({ ...rect })));
+  }
+  syncQuestionRect(primary.question);
+
+  for (const { question } of others) {
+    primary.question.subImages = [
+      ...primary.question.subImages,
+      ...question.subImages,
+    ];
+    if (!primary.question.mergedImage && question.mergedImage) {
+      primary.question.mergedImage = question.mergedImage;
+    }
+    if (!primary.question.type && question.type) {
+      primary.question.type = question.type;
+    }
+    mergeQuestionInfo(primary.question.info, question.info);
+  }
+
+  for (const { page: hostPage, question } of others) {
+    hostPage.questions = hostPage.questions.filter(
+      (item) => item.id !== question.id,
+    );
+  }
+  return next;
+}
+
+/**
+ * 解除合并：题目每个框拆成独立题。首框题保留原 id/no/type/info/mergedImage/subImages，
+ * 其余框各建空内容新题（默认题型），新题落回框所在页（跨页时分散到多页）。
+ * 返回新 pages（入参不变）；题目不存在或仅单框时原样返回。
+ */
+export function unmergeQuestion(pages: QietiPage[], id: string): QietiPage[] {
+  const next = structuredClone(pages);
+  let target: { question: QietiQuestion; page: QietiPage } | null = null;
+  for (const page of next) {
+    const question = page.questions.find((item) => item.id === id);
+    if (question) {
+      target = { question, page };
+      break;
+    }
+  }
+  if (!target) return pages;
+  const { question, page } = target;
+  const rects = ensureQuestionRects(question);
+  if (rects.length < 2) return pages;
+
+  const [firstRect, ...otherRects] = rects;
+  question.rects = [firstRect];
+  question.rect = { ...firstRect };
+
+  for (const rect of otherRects) {
+    const newQuestion = normalizeQuestionShape({
+      id: createId(),
+      no: 0,
+      type: QUESTION_TYPES[0],
+      rect: { ...rect },
+      rects: [{ ...rect }],
+    });
+    const hostPage = next.find((item) => item.id === rect.pageId) ?? page;
+    hostPage.questions.push(newQuestion);
+  }
+  return next;
+}
+
+/** pos_list 多边形 → 页面坐标系内的矩形（clamp 到页面边界，保证最小尺寸），并标注所属页 */
+export function rectsFromPosList(
+  posList: unknown,
+  page: QietiPage,
+): QuestionRect[] {
   if (!Array.isArray(posList) || !posList.length || !page) return [];
   return posList
-    .map((poly): Rect | null => {
+    .map((poly): QuestionRect | null => {
       if (!Array.isArray(poly)) return null;
       const points: { x: number; y: number }[] = [];
       for (let i = 0; i < poly.length - 1; i += 2) {
@@ -326,9 +473,9 @@ export function rectsFromPosList(posList: unknown, page: QietiPage): Rect[] {
         MIN_SIZE,
         Math.max(MIN_SIZE, page.height - y),
       );
-      return { x, y, w, h };
+      return { x, y, w, h, pageId: page.id };
     })
-    .filter((rect): rect is Rect => rect !== null);
+    .filter((rect): rect is QuestionRect => rect !== null);
 }
 
 // ─── 题目 Markdown 组装（列表渲染与导出共用）──────────────────────────
