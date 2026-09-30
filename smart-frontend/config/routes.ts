@@ -75,6 +75,37 @@ export default [
     component: './table-list',
   },
   {
+    name: '切题',
+    icon: 'scissor',
+    path: '/qieti',
+    routes: [
+      {
+        path: '/qieti',
+        redirect: '/qieti/cut',
+      },
+      {
+        name: '切题工作台',
+        path: '/qieti/cut',
+        component: './qieti/cut',
+      },
+      {
+        name: '题目列表',
+        path: '/qieti/questions',
+        component: './qieti/questions',
+      },
+      {
+        name: '上传记录',
+        path: '/qieti/records',
+        component: './qieti/records',
+      },
+      {
+        name: '原型预览',
+        path: '/qieti/preview',
+        component: './qieti/preview',
+      },
+    ],
+  },
+  {
     path: '/',
     redirect: '/welcome',
   },

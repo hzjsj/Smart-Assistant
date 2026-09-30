@@ -1,0 +1,610 @@
+{
+    "questions": [
+        {
+            "pos_list": [
+                [
+                    152,
+                    268,
+                    820,
+                    268,
+                    820,
+                    471,
+                    152,
+                    471
+                ]
+            ],
+            "sub_images": [
+                "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_0_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204474&Signature=aXyt22l9nDPjiJjFdtFu8c5wIW0%3D"
+            ],
+            "merged_image": "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_0_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204474&Signature=aXyt22l9nDPjiJjFdtFu8c5wIW0%3D",
+            "info": {
+                "stem": {
+                    "text": "5.(2017·安徽·2分)一个质量为500 g的货物随天舟一号货运飞船升入太空。与发射前相比较,该货物的惯性_(选填“变大”“变小”或“不变”)。",
+                    "pos_list": [
+                        [
+                            152,
+                            268,
+                            824,
+                            268,
+                            824,
+                            469,
+                            152,
+                            469
+                        ]
+                    ]
+                },
+                "option": [],
+                "figure": [],
+                "answer": [],
+                "type": "填空题",
+                "subquestion": []
+            }
+        },
+        {
+            "pos_list": [
+                [
+                    150,
+                    490,
+                    820,
+                    490,
+                    820,
+                    846,
+                    150,
+                    846
+                ],
+                [
+                    182,
+                    865,
+                    501,
+                    865,
+                    501,
+                    1110,
+                    182,
+                    1110
+                ]
+            ],
+            "sub_images": [
+                "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_1_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204474&Signature=zrpWvLOAR%2FkNr85jfRPKBfHGpfo%3D",
+                "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_1_1.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204474&Signature=B8eZrbGGamw44LreVlsdWU7A1FY%3D"
+            ],
+            "merged_image": "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_1.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204474&Signature=vWkSDB%2BR%2BAqw3lVvpMyABhOZH2w%3D",
+            "info": {
+                "stem": {
+                    "text": "6.(2023·安徽·2分)如图所示,汽车上配有安全带和头枕,司机和乘客都必须系好安全带。当向前行驶的汽车分别出现突然加速、紧急刹车两种状况时,对乘车人员起主要保护作用的分别是()",
+                    "pos_list": [
+                        [
+                            153,
+                            490,
+                            817,
+                            490,
+                            817,
+                            758,
+                            153,
+                            758
+                        ]
+                    ]
+                },
+                "option": [
+                    {
+                        "text": "A. 头枕、头枕",
+                        "pos_list": [
+                            [
+                                188,
+                                762,
+                                388,
+                                762,
+                                388,
+                                807,
+                                188,
+                                807
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "B. 安全带、安全带",
+                        "pos_list": [
+                            [
+                                524,
+                                762,
+                                791,
+                                762,
+                                791,
+                                807,
+                                524,
+                                807
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "C 安全带 头枕",
+                        "pos_list": [
+                            [
+                                181,
+                                813,
+                                422,
+                                813,
+                                422,
+                                858,
+                                181,
+                                858
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "D. 头枕 安全带",
+                        "pos_list": [
+                            [
+                                520,
+                                813,
+                                761,
+                                813,
+                                761,
+                                858,
+                                520,
+                                858
+                            ]
+                        ]
+                    }
+                ],
+                "figure": [
+                    {
+                        "pos_list": [
+                            [
+                                182,
+                                877,
+                                482,
+                                877,
+                                482,
+                                1104,
+                                182,
+                                1104
+                            ]
+                        ]
+                    }
+                ],
+                "answer": [],
+                "type": "选择题",
+                "subquestion": []
+            }
+        },
+        {
+            "pos_list": [
+                [
+                    152,
+                    1127,
+                    820,
+                    1127,
+                    820,
+                    1615,
+                    152,
+                    1615
+                ],
+                [
+                    545,
+                    957,
+                    790,
+                    957,
+                    790,
+                    1095,
+                    545,
+                    1095
+                ]
+            ],
+            "sub_images": [
+                "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_2_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204474&Signature=S%2F6m0nMn%2FJM22t63aMVI%2FpBtzi8%3D",
+                "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_2_1.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204474&Signature=MeOzPSf%2FrSOLK6tZL4ZagjIioC8%3D"
+            ],
+            "merged_image": "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_2.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204474&Signature=LU12EnozqrVgMdSTvouxMV1jLd0%3D",
+            "info": {
+                "stem": {
+                    "text": "7.(2016·安徽·3分)下列说法错误的是()",
+                    "pos_list": [
+                        [
+                            153,
+                            1130,
+                            816,
+                            1130,
+                            816,
+                            1237,
+                            153,
+                            1237
+                        ]
+                    ]
+                },
+                "option": [
+                    {
+                        "text": "A. 标枪投掷出去后能继续飞行是标枪具有惯性的缘故",
+                        "pos_list": [
+                            [
+                                189,
+                                1244,
+                                820,
+                                1244,
+                                820,
+                                1338,
+                                189,
+                                1338
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "B. 短跑运动员到达终点时不能立刻停下来是自身惯性的表现",
+                        "pos_list": [
+                            [
+                                189,
+                                1353,
+                                820,
+                                1353,
+                                820,
+                                1453,
+                                189,
+                                1453
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "C. 跳远时助跑可以增大运动员的惯性,从而提高成绩",
+                        "pos_list": [
+                            [
+                                189,
+                                1464,
+                                820,
+                                1464,
+                                820,
+                                1564,
+                                189,
+                                1564
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "D. 质量越大的物体,其惯性越大",
+                        "pos_list": [
+                            [
+                                186,
+                                1573,
+                                660,
+                                1573,
+                                660,
+                                1620,
+                                186,
+                                1620
+                            ]
+                        ]
+                    }
+                ],
+                "figure": [
+                    {
+                        "pos_list": [
+                            [
+                                550,
+                                959,
+                                788,
+                                959,
+                                788,
+                                1106,
+                                550,
+                                1106
+                            ]
+                        ]
+                    }
+                ],
+                "answer": [],
+                "type": "选择题",
+                "subquestion": []
+            }
+        },
+        {
+            "pos_list": [
+                [
+                    152,
+                    1715,
+                    820,
+                    1715,
+                    820,
+                    2203,
+                    152,
+                    2203
+                ]
+            ],
+            "sub_images": [
+                "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_3_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204474&Signature=VrsvVGOFzvt3VYbPrRT796pZWDc%3D"
+            ],
+            "merged_image": "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_3_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204474&Signature=VrsvVGOFzvt3VYbPrRT796pZWDc%3D",
+            "info": {
+                "stem": {
+                    "text": "8. 核心素养·物理观念 如图所示, 在一辆表面光滑的小车上放有质量分别为 \\( m_1 \\)、\\( m_2 \\) 的两个小球, 小球随小车做匀速直线运动。若小车突然停止运动, 则两个小球 (车无限长, 且其他阻力不计) _ ()",
+                    "pos_list": [
+                        [
+                            152,
+                            1715,
+                            822,
+                            1715,
+                            822,
+                            1984,
+                            152,
+                            1984
+                        ]
+                    ]
+                },
+                "option": [
+                    {
+                        "text": "A. 若 \\( m_1 < m_2 \\)，则这两个小球肯定碰撞",
+                        "pos_list": [
+                            [
+                                184,
+                                1992,
+                                725,
+                                1992,
+                                725,
+                                2046,
+                                184,
+                                2046
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "B. 若 \\( m_1 > m_2 \\)，则这两个小球肯定碰撞",
+                        "pos_list": [
+                            [
+                                184,
+                                2047,
+                                725,
+                                2047,
+                                725,
+                                2101,
+                                184,
+                                2101
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "C. 两个小球一定碰撞",
+                        "pos_list": [
+                            [
+                                184,
+                                2101,
+                                509,
+                                2101,
+                                509,
+                                2155,
+                                184,
+                                2155
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "D. 两个小球一定不相碰",
+                        "pos_list": [
+                            [
+                                184,
+                                2158,
+                                547,
+                                2158,
+                                547,
+                                2211,
+                                184,
+                                2211
+                            ]
+                        ]
+                    }
+                ],
+                "figure": [],
+                "answer": [],
+                "type": "选择题",
+                "subquestion": []
+            }
+        },
+        {
+            "pos_list": [
+                [
+                    870,
+                    822,
+                    1540,
+                    822,
+                    1540,
+                    1451,
+                    870,
+                    1451
+                ]
+            ],
+            "sub_images": [
+                "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_4_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204475&Signature=KKl2PCYR2D%2Fj5YNH9EWnRjSZ2j4%3D"
+            ],
+            "merged_image": "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_4_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204475&Signature=KKl2PCYR2D%2Fj5YNH9EWnRjSZ2j4%3D",
+            "info": {
+                "stem": {
+                    "text": "9.(2024·安徽·2分)如图所示,一根有一定质量的木杆竖直悬挂在细绳下端,一只质量为10kg的猴子抱住木杆处于静止状态。某一瞬间细绳突然断了,猴子本能地立即沿木杆使劲往上爬。在爬的过程中,若木杆始终竖直,猴子与地面的高度一直保持不变,$g$取10 N/kg,则该过程中猴子所受摩擦力的大小为_ N。",
+                    "pos_list": [
+                        [
+                            870,
+                            822,
+                            1545,
+                            822,
+                            1545,
+                            1233,
+                            870,
+                            1233
+                        ]
+                    ]
+                },
+                "option": [],
+                "figure": [
+                    {
+                        "pos_list": [
+                            [
+                                891,
+                                1237,
+                                1516,
+                                1237,
+                                1516,
+                                1447,
+                                891,
+                                1447
+                            ]
+                        ]
+                    }
+                ],
+                "answer": [],
+                "type": "填空题",
+                "subquestion": []
+            }
+        },
+        {
+            "pos_list": [
+                [
+                    872,
+                    1502,
+                    1540,
+                    1502,
+                    1540,
+                    1902,
+                    872,
+                    1902
+                ]
+            ],
+            "sub_images": [
+                "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_5_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204475&Signature=RjwD%2BCU8UyGGE32CBaGh0c7Fwwk%3D"
+            ],
+            "merged_image": "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_5_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204475&Signature=RjwD%2BCU8UyGGE32CBaGh0c7Fwwk%3D",
+            "info": {
+                "stem": {
+                    "text": "10.(2023·安徽·2分)小宇在拖地时,拖把头沿图中$v$所示方向运动,则拖把头对地面压力的方向、地面对拖把头摩擦力的方向分别为_()",
+                    "pos_list": [
+                        [
+                            872,
+                            1505,
+                            1542,
+                            1505,
+                            1542,
+                            1712,
+                            872,
+                            1712
+                        ]
+                    ]
+                },
+                "option": [
+                    {
+                        "text": "A. 垂直地面向下、与 \\( v \\) 所示方向相反",
+                        "pos_list": [
+                            [
+                                924,
+                                1711,
+                                1457,
+                                1711,
+                                1457,
+                                1765,
+                                924,
+                                1765
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "B. 垂直地面向下、与 \\( v \\) 所示方向相同",
+                        "pos_list": [
+                            [
+                                924,
+                                1762,
+                                1457,
+                                1762,
+                                1457,
+                                1815,
+                                924,
+                                1815
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "C. 沿拖杆斜向下、与 \\( v \\) 所示方向相同",
+                        "pos_list": [
+                            [
+                                924,
+                                1814,
+                                1457,
+                                1814,
+                                1457,
+                                1867,
+                                924,
+                                1867
+                            ]
+                        ]
+                    },
+                    {
+                        "text": "D. 沿拖杆斜向下，与 \\( v \\) 所示方向相反",
+                        "pos_list": [
+                            [
+                                924,
+                                1862,
+                                1457,
+                                1862,
+                                1457,
+                                1915,
+                                924,
+                                1915
+                            ]
+                        ]
+                    }
+                ],
+                "figure": [],
+                "answer": [],
+                "type": "选择题",
+                "subquestion": []
+            }
+        },
+        {
+            "pos_list": [
+                [
+                    872,
+                    1930,
+                    1540,
+                    1930,
+                    1540,
+                    2167,
+                    872,
+                    2167
+                ]
+            ],
+            "sub_images": [
+                "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_6_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204475&Signature=Rl0w06%2BNzxHvOEN%2BmvG3agQEYtI%3D"
+            ],
+            "merged_image": "http://duguang-mld.oss-accelerate.aliyuncs.com/ocr_edu/E0D39B22-A2E5-554D-9B51-55F7900EBB28_6_0.png?OSSAccessKeyId=LTAI5tPtEwpyT4JR9GymJGwS&Expires=1761204475&Signature=Rl0w06%2BNzxHvOEN%2BmvG3agQEYtI%3D",
+            "info": {
+                "stem": {
+                    "text": "11.(2022·安徽·2分)\n\n小军在整理房间时,用平行于水平地面的力推动玩具箱,如图所示。若地面粗糙程度不变,则箱内玩具越",
+                    "pos_list": [
+                        [
+                            874,
+                            1930,
+                            1540,
+                            1930,
+                            1540,
+                            2178,
+                            874,
+                            2178
+                        ]
+                    ]
+                },
+                "option": [],
+                "figure": [
+                    {
+                        "pos_list": [
+                            [
+                                1284,
+                                1930,
+                                1544,
+                                1930,
+                                1544,
+                                2109,
+                                1284,
+                                2109
+                            ]
+                        ]
+                    }
+                ],
+                "answer": [],
+                "type": "问答题",
+                "subquestion": []
+            }
+        }
+    ]
+}

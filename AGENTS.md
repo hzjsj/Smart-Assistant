@@ -4,7 +4,7 @@ Workspace instructions for ZCode agents working in `smart-assistant`.
 
 ## Repository purpose
 
-"智能助手 / Smart Assistant" — an AI-assisted education platform: AI chat (multi-provider LLM), document management with MinerU parsing, AI exam-paper generation, and an admin user-management module. Two top-level apps:
+"智能助手 / Smart Assistant" — an AI-assisted education platform: AI chat (multi-provider LLM), document management with MinerU parsing, AI exam-paper generation, question-cutting (切题: exam image → structured questions via Alibaba EduTutor), and an admin user-management module. Two top-level apps:
 
 - `smart-backend/` — **FastAPI + SQLAlchemy + MySQL** (Python 3.10+). NOT Java/Spring.
 - `smart-frontend/` — **UmiJS Max (Ant Design Pro v6) + React 19 + antd 6**. AI UI built on `@ant-design/x`, `@ant-design/x-markdown`, `@ant-design/x-sdk`.
@@ -36,7 +36,8 @@ npm run openapi    # regenerate src/services/fast-api-manage/* from backend open
 
 ### Backend
 - Entry: `main.py` (loads `.env`, creates tables, seeds, mounts routers, `allow_origins=["*"]`).
-- Per-feature modules under their own dir (`users/`, `chat/`, `documents/`, `generate_test_paper/`, `mineru/`, `oss/`), each following `models.py` / `crud.py` / `schemas.py` / `router.py` convention. Add new features by mirroring this layout.
+- Per-feature modules under their own dir (`users/`, `chat/`, `documents/`, `generate_test_paper/`, `mineru/`, `oss/`, `qieti/`), each following `models.py` / `crud.py` / `schemas.py` / `router.py` convention. Add new features by mirroring this layout.
+- `qieti/` is the reference for new-table conventions: inherits `TimestampMixin`, and its snapshot payload column uses `Text().with_variant(MEDIUMTEXT, "mysql")` (MySQL TEXT is 64KB — use the variant for any column that may hold dataURL images / large JSON).
 - Shared DB layer in `database.py` (`Base`, `TimestampMixin`, `get_db()` dependency); auth deps in `auth.py` (`get_current_user`, `require_admin`).
 - **Auth is cookie-based sessions, NOT JWT.** Cookie name `mock_token`; tokens `mock-<hex>`, stored in `user_sessions`, TTL 7 days. Passwords bcrypt-hashed. `auth.py` reads the cookie via `request.cookies.get(...)` (intentionally not a `Cookie()` param, to keep it out of OpenAPI).
 - **LLM layer**: `chat/llm.py` wraps LangChain `ChatOpenAI` against OpenAI-compatible endpoints. Providers: DeepSeek, Alibaba Bailian (百炼), Volcengine Ark (豆包). `MODELS` registry; `DEFAULT_MODEL = "deepseek-v4-flash"`. Deep-thinking toggled via provider-specific `extra_body` (`enable_thinking` for deepseek/bailian; `{"thinking":{"type":"enabled"}}` for ark). `ReasoningChatOpenAI` subclass preserves `delta.reasoning_content` (works around langchain#29513). Per-model `context_tokens` overridable via env `MODEL_CONTEXT_<MODEL>_MAX`.
@@ -49,11 +50,12 @@ npm run openapi    # regenerate src/services/fast-api-manage/* from backend open
 - AI chat pages (`chat`, `chatbot`, `copilot`) use `@ant-design/x-sdk`'s `useXChat` + `useXConversations` + `XRequest` wrapped in `DeepSeekChatProvider`. `chat/service.ts` and `chatbot/service.ts` each define a `createChatProvider()` factory — keep them consistent when changing streaming behavior.
 - **Streaming endpoints bypass the Umi dev proxy** (HPM buffers SSE): `chat`/`chatbot` hardcode `http://localhost:5000/api/chat/completions`, `generate-test-paper` hits `http://localhost:5000/api/chujuanji/generate` directly. Production relies on nginx `proxy_buffering off`. Don't route SSE through the proxied `request` instance.
 - State: Umi `initialState` + `access` (`canAdmin` in `src/access.ts`); server state via `@tanstack/react-query` (Umi `reactQuery` plugin; provider mounted in `src/app.tsx` `rootContainer`). No Redux/models dir.
+- `src/pages/qieti/` (question-cutting) is a self-contained module: hand-written `service.ts` (relative `/api/qieti/*` paths through the dev proxy, `skipErrorHandler: true` so backend `detail` reaches the UI), antd-style `createStyles` for all custom styling, `react-katex` for math (`MathText` splits `$..$`/`$$..$$` segments). Canvas-style rect drawing lives in `cut/hooks/useRectInteraction.ts` (rAF-throttled, page-image pixel coordinate space).
 - `src/app.tsx` is the runtime-config hub: `getInitialState`, `layout`, `request` (RequestConfig), `rootContainer`. `requestErrorConfig.ts` holds request error handling.
 
 ## Configuration & secrets
 
-- Backend config is entirely env-driven via `smart-backend/.env` (template `.env.example`): MySQL (`DB_*` / `DATABASE_URL`), LLM keys (`DEEPSEEK_*`, `BAILIAN_*`, `ARK_*`), Alibaba OSS (`OSS_*`), MinerU (`MINERU_*`). **`.env` is committed** — rotate keys if sharing externally.
+- Backend config is entirely env-driven via `smart-backend/.env` (template `.env.example`): MySQL (`DB_*` / `DATABASE_URL`), LLM keys (`DEEPSEEK_*`, `BAILIAN_*`, `ARK_*`), Alibaba OSS (`OSS_*` — used by both the `oss/` module and `qieti/` image storage), MinerU (`MINERU_*`), EduTutor question-cutting (`ALIBABA_CLOUD_ACCESS_KEY_ID/SECRET` — a *different* AK from `OSS_*`, `EDUTUTOR_*`). **`.env` is gitignored — never commit real keys.**
 - Frontend has no `.env`; backend URL handled by `config/proxy.ts` (dev) and hardcoded `http://localhost:5000` for SSE streams.
 
 ## Key REST surface (backend)
@@ -63,6 +65,7 @@ npm run openapi    # regenerate src/services/fast-api-manage/* from backend open
 - `/api/files/*` (upload/list/download/md/mineru) — `documents/router.py`
 - `/api/oss/convert-md-text-to-docx`, `/api/mineru/{extract,callback}` — `oss/`, `mineru/`
 - `/api/chujuanji/*` (generate, generate-sync, exams, course/question/knowledge-points) — `generate_test_paper/router.py` (all auth-required)
+- `/api/qieti/{upload,cut,snapshot,records}` — `qieti/router.py` (all auth-required): multipart upload → Aliyun OSS, EduTutor cut (`{question_image_url}` → `{questions_data}`), snapshot GET/POST (single-row `snapshot_key='latest'`), paginated upload records
 
 ## Conventions / gotchas
 
@@ -71,3 +74,6 @@ npm run openapi    # regenerate src/services/fast-api-manage/* from backend open
 - MySQL dev runs on port **3307** locally (root, empty password per README); `.env.example` shows 3306 — check actual `.env`.
 - Full-screen pages set `layout: false` in `config/routes.ts` (`/chat`, `/copilot/:id`, `/user/*`).
 - `exportStatic`, `manifest`, `routePrefetch`, `fastRefresh` enabled; Tailwind v4 configured.
+- `qieti/` storage rules: uploaded page images go to the **shared public-read OSS bucket `kdsa`** under `qieti/<timestamp>/<file>`; crop/derivative URLs use `x-oss-process=image/crop,w_,h_,x_,y_` (no `g_` param, default origin top-left). Images returned by EduTutor (`merged_image`, `sub_images`) are **temporary signed links on Alibaba's Duguang bucket** — they expire; transfer to own OSS if persistence is needed.
+- Frontend localStorage keys carry a project prefix (`smart-assistant-question-bank-data` in qieti) — multiple localhost dev projects on this machine must not collide.
+- macOS gotcha: port 5000 can be held by the AirPlay Receiver (ControlCenter) — if uvicorn fails with `[Errno 48]`, disable it in 系统设置 → 隔空投送与接力, or run the backend on another port and update `config/proxy.ts` accordingly.
