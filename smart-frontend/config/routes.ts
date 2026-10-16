@@ -106,6 +106,12 @@ export default [
     ],
   },
   {
+    name: '书版预览',
+    icon: 'fileText',
+    path: '/shuban',
+    component: './shuban',
+  },
+  {
     path: '/',
     redirect: '/welcome',
   },

@@ -21,6 +21,7 @@ from oss.router import router as oss_router
 from mineru.router import router as mineru_router
 from generate_test_paper.router import router as generate_test_paper_router
 from qieti.router import router as qieti_router
+from shuban.router import router as shuban_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -52,3 +53,4 @@ app.include_router(oss_router)
 app.include_router(mineru_router)
 app.include_router(generate_test_paper_router)
 app.include_router(qieti_router)
+app.include_router(shuban_router)
