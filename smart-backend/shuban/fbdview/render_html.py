@@ -1795,6 +1795,37 @@ def preview_html(dec, lex, geo: Geometry, fbd_path: str = "", root: str | None =
     rule = (f"column-rule:0.2mm {rule_style} #000;" if (geo.column_rule or "").startswith("栏线") else "")
     pitch = f"{geo.line_pitch_mm:g}mm" if geo.line_pitch_mm else "auto"
     wrap_info = "A4 换行、A5 换段；忽略编辑器回车，SJ 控制段首缩进"
+    bw_n = len(r.bw_groups)
+    preview_notes = [
+        ("近似预览：按官方注解语义还原字号（含小号/磅字号）、行高（BX 行距）、字体、"
+         "对齐、着重（点/线/曲线等）、彩色（CS/CSX/CSD CMYK）、方框、图片（EPS 栅格化）；"
+         f"浏览器按实际字体测量断行并生成固定尺寸页面；高级书版版式仍有近似。自定义注解已宏展开（{len(defs)} 个定义）。"),
+        wrap_info + (
+            f"。另有 {bw_n} 组边文（装订线/页脚装饰等）已按边别绝对定位到页边："
+            "左边文＝单页（奇数页）、右边文＝双页（偶数页）；下边文的单/双页两条在此并列显示。"
+            if bw_n else "。"
+        ),
+    ]
+    parity_controls = (
+        '<span class="muted" style="margin-left:10px">页别：</span>'
+        '<button id="pb-odd" class="paritybtn on" onclick="setParity(\'odd\')" '
+        'title="装订线在左（ZBW新）">奇数页（单页）</button>'
+        '<button id="pb-even" class="paritybtn" onclick="setParity(\'even\')" '
+        'title="装订线在右（YBW新）">偶数页（双页）</button>'
+        '<button id="pb-all" class="paritybtn" onclick="setParity(\'all\')" '
+        'title="同时显示单双页边文，便于对照">全部</button>'
+        if bw_n else ''
+    )
+    display_controls = ''.join(
+        part for part in (
+            '<button id="lb-bg" class="layerbtn" aria-pressed="false" onclick="setLayer(\'bg\')" '
+            'title="对应书版【BYJ】：隐藏/显示本页背景内容">背景图 ✓</button>' if r.bg_parts else '',
+            '<button id="lb-bw" class="layerbtn" aria-pressed="false" onclick="setLayer(\'bw\')" '
+            'title="对应书版【BYW】：隐藏/显示本页边文内容（装订线等）">边文 ✓</button>' if bw_n else '',
+        )
+    )
+    if display_controls:
+        display_controls = '<span class="muted" style="margin-left:10px">显示：</span>' + display_controls
     context = r.context
     settings = context.settings if context else {}
     warnings = sorted(r.layout_warnings | r.fonts.warnings)
@@ -1835,6 +1866,7 @@ def preview_html(dec, lex, geo: Geometry, fbd_path: str = "", root: str | None =
               'rule':f'0.2mm {rule_style} #000' if rule else '', 'pageNumber':page_number,
               'context':{'pro':context.path if context else None,'settings':settings,
                          'aliases':context.aliases if context else {}}, 'warnings':warnings}
+    config['previewNotes'] = preview_notes
     config['margins'] = {'top':m_t,'bottom':m_b,'left':m_l,'right':m_r}
     config['file'] = fbd_path
     # Preview numbering policy for this corpus: paired WM inside the initial
@@ -1853,19 +1885,25 @@ def preview_html(dec, lex, geo: Geometry, fbd_path: str = "", root: str | None =
         config['header'] = {'font':f"{style['pt_v'] or 10.5:g}pt {font_css(style['code'])}",
                             'bottom':header.startswith('X'),'rule':',B' not in header and '，B' not in header}
     config_json = json.dumps(config, ensure_ascii=False).replace('<', '\\u003c')
-    bw_n = len(r.bw_groups)
-    bw_info = (f"另有 <b>{bw_n} 组边文</b>（装订线/页脚装饰等）已按边别绝对定位到页边："
-               f"左边文＝单页（奇数页）、右边文＝双页（偶数页）；"
-               f"下边文的单/双页两条在此并列显示。" if bw_n else "")
     return f"""
-<div class="note">近似预览：按官方注解语义还原 <b>字号（含小号/磅字号）·行高（BX 行距）·字体·
-对齐·着重（点/线/曲线等）·彩色（CS/CSX/CSD CMYK）·方框·图片（EPS 栅格化）</b>；
-浏览器按实际字体测量断行并生成固定尺寸页面；高级书版版式仍有近似。自定义注解已宏展开（{len(defs)} 个定义）。</div>
-<div class="note">{wrap_info}。{'　' + bw_info if bw_info else ''}</div>
-<div class="note" id="layout-status">正在加载字体和图片、计算行栏页坐标…</div>
+<div id="layout-status" hidden>正在加载字体和图片、计算行栏页坐标…</div>
 <script type="application/json" id="layout-config">{config_json}</script>
 <div class="zoombar">缩放：
-  <button onclick="downloadLayout()">导出布局坐标</button>
+  <select id="zoom-choice" onchange="setZoomChoice(this.value)" aria-label="缩放比例">
+    <option value="25">25%</option>
+    <option value="50">50%</option>
+    <option value="75">75%</option>
+    <option value="100" selected title="按小样声明的页面尺寸 1:1 显示">默认 100%（实际大小）</option>
+    <option value="fit" title="按当前每行版式铺满可用宽度">铺满宽度</option>
+  </select>
+  <div class="page-nav" aria-label="页码导航">
+    <button id="prev-page" type="button" aria-label="上一页" title="上一页" onclick="movePage(-1)" disabled>&#9664;</button>
+    <input id="page-current" type="number" min="1" value="1" aria-label="跳转到页码"
+      title="输入页码后按 Enter 跳转" onkeydown="if(event.key==='Enter')goToPage(this.value)">
+    <span>/</span>
+    <span id="page-count">0</span>
+    <button id="next-page" type="button" aria-label="下一页" title="下一页" onclick="movePage(1)" disabled>&#9654;</button>
+  </div>
   <label>栏数 <select id="column-choice" onchange="setColumns(this.value)">
     {''.join(f'<option value="{n}"'+ (' selected' if n == cols else '') + f'>{n}</option>' for n in range(1,9))}
   </select></label>
@@ -1873,24 +1911,7 @@ def preview_html(dec, lex, geo: Geometry, fbd_path: str = "", root: str | None =
     title="预览窗口里每行并排显示的页数（仅影响屏幕显示，导出 PDF 仍一页一纸）">
     <option value="1">1 页</option><option value="2">2 页</option>
   </select></label>
-  <button onclick="setZoom(0.25)">25%</button>
-  <button onclick="setZoom(0.5)">50%</button>
-  <button onclick="setZoom(0.75)">75%</button>
-  <button onclick="setZoom({zoom:.3f})" title="按小样声明的页面尺寸 1:1 显示">默认 100%（实际大小）</button>
-  <button onclick="fitWidth()" title="按可用宽度铺满；窗口宽度小于页面实际宽度时加载后自动执行">铺满宽度</button>
-  <span id="zv" class="muted"></span>
-  <span class="muted" style="margin-left:10px">页别：</span>
-  <button id="pb-odd" class="paritybtn on" onclick="setParity('odd')"
-    title="装订线在左（ZBW新）">奇数页（单页）</button>
-  <button id="pb-even" class="paritybtn" onclick="setParity('even')"
-    title="装订线在右（YBW新）">偶数页（双页）</button>
-  <button id="pb-all" class="paritybtn" onclick="setParity('all')"
-    title="同时显示单双页边文，便于对照">全部</button>
-  <span class="muted" style="margin-left:10px">显示：</span>
-  <button id="lb-bg" class="layerbtn" aria-pressed="false" onclick="setLayer('bg')"
-    title="对应书版【BYJ】：隐藏/显示本页背景内容">背景图 ✓</button>
-  <button id="lb-bw" class="layerbtn" aria-pressed="false" onclick="setLayer('bw')"
-    title="对应书版【BYW】：隐藏/显示本页边文内容（装订线等）">边文 ✓</button>
+  {parity_controls}{display_controls}
 </div>
 <div class="pagewrap">
  <div id="measured-pages"></div>
@@ -2167,10 +2188,19 @@ ul.warn{margin:0;padding-left:18px;font-size:12px;color:var(--text-2)}
   border:1px solid var(--split-2)}
 .colorbar .colorbtn:not(.on){opacity:.45}
 .colorbar .colorbtn:not(.on) .lbl{text-decoration:line-through}
-.zoombar{margin:0 0 8px;font-size:12px;color:var(--text-2)}
-.zoombar button{border:1px solid var(--border);background:var(--container);border-radius:var(--radius-sm);
+.zoombar{position:sticky;top:0;z-index:20;width:100%;margin:8px 0;padding:0 12px;
+  box-sizing:border-box;font-size:12px;color:var(--text-2);background:var(--bg);
+  box-shadow:0 2px 4px rgba(0,0,0,.06)}
+.zoombar button,.zoombar select{border:1px solid var(--border);background:var(--container);border-radius:var(--radius-sm);
   padding:2px 8px;cursor:pointer;margin-right:4px;color:var(--text)}
-.zoombar button:hover{border-color:var(--primary-hover);color:var(--primary-hover)}
+.zoombar button:hover,.zoombar select:hover{border-color:var(--primary-hover);color:var(--primary-hover)}
+.zoombar #zoom-choice{min-width:150px}
+.page-nav{display:inline-flex;align-items:center;gap:4px;margin-right:4px;color:var(--text-2);font-variant-numeric:tabular-nums}
+.page-nav button{display:inline-grid;width:24px;height:24px;place-items:center;padding:0}
+.page-nav button:disabled{opacity:.4;cursor:not-allowed}
+.page-nav input{width:44px;height:24px;padding:1px 4px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--container);color:var(--text);font:inherit;text-align:center}
+.pageframe{scroll-margin-top:8px}
 .zoombar button.layerbtn.on,.zoombar button.paritybtn.on{background:var(--primary);border-color:var(--primary);color:#fff}
 .zoombar button:not(.on){color:var(--text-3)}
 .muted{color:#8a949e}
@@ -2270,7 +2300,53 @@ function tab(id,btn){document.querySelectorAll('.panel').forEach(p=>p.classList.
 document.getElementById(id).classList.add('on');
 document.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');}
 function setZoom(z){document.querySelectorAll('.pageframe').forEach(f=>f.style.zoom=z);
-var v=document.getElementById('zv');if(v)v.textContent='当前 '+Math.round(z*100)+'%';}
+var select=document.getElementById('zoom-choice');if(select){
+ var preset=[25,50,75,100].find(p=>Math.abs(z-p/100)<0.0001);
+ var current=select.querySelector('option[data-current]');
+ if(preset){if(current)current.remove();select.value=String(preset);}
+ else{if(!current){current=document.createElement('option');current.value='current';current.dataset.current='true';
+  var fit=select.querySelector('option[value="fit"]');select.insertBefore(current,fit);}
+  current.textContent='当前 '+Math.round(z*100)+'%';select.value='current';}}
+}
+function setZoomChoice(value){if(value==='fit'){window.fbdFitZoom=true;fitWidth();}
+ else{window.fbdFitZoom=false;setZoom(Number(value)/100);}}
+function updatePageNavigation(){var pages=[...document.querySelectorAll('#measured-pages .pageframe')];
+ var input=document.getElementById('page-current'),count=document.getElementById('page-count');if(!input||!count||!pages.length)return;
+ count.textContent=String(pages.length);input.max=String(pages.length);
+ var middle=window.innerHeight/2;
+ var current=pages.find(function(page){var r=page.getBoundingClientRect();return r.top<=middle&&r.bottom>=middle;});
+ if(!current)current=pages.reduce(function(best,page){var r=page.getBoundingClientRect();
+  var d=Math.min(Math.abs(r.top-middle),Math.abs(r.bottom-middle));return d<best.distance?{page,distance:d}:best;},{page:pages[0],distance:Infinity}).page;
+ if(window.fbdPerRowMode==='2'){
+  var rowTop=current.getBoundingClientRect().top;
+  var row=pages.filter(function(page){return Math.abs(page.getBoundingClientRect().top-rowTop)<2;});
+  current=row.find(function(page){return Number(page.dataset.page)===Number(window.fbdCurrentPage);})||row[0]||current;
+ }
+ var pageNumber=Number(current.dataset.page)||1;if(document.activeElement!==input)input.value=String(pageNumber);
+ window.fbdCurrentPage=pageNumber;
+ var rowIndex=window.fbdPerRowMode==='2'?Math.floor((pageNumber-1)/2):pageNumber-1;
+ var rowCount=window.fbdPerRowMode==='2'?Math.ceil(pages.length/2):pages.length;
+ document.getElementById('prev-page').disabled=rowIndex<=0;
+ document.getElementById('next-page').disabled=rowIndex>=rowCount-1;
+}
+function goToPage(value){var pages=document.querySelectorAll('#measured-pages .pageframe');
+ var input=document.getElementById('page-current'),page=Number(value);if(!pages.length||!input)return;
+ if(!Number.isFinite(page)){updatePageNavigation();return;}
+ page=Math.max(1,Math.min(pages.length,Math.trunc(page)));input.value=String(page);
+ window.fbdCurrentPage=page;
+ var targetPage=window.fbdPerRowMode==='2'?Math.floor((page-1)/2)*2+1:page;
+ var target=document.querySelector('#measured-pages .pageframe[data-page="'+targetPage+'"]');
+ if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function movePage(delta){var input=document.getElementById('page-current');
+ if(input)goToPage((Number(input.value)||1)+delta*(window.fbdPerRowMode==='2'?2:1));}
+document.addEventListener('scroll',function(){requestAnimationFrame(updatePageNavigation);},true);
+window.addEventListener('message',function(event){var data=event.data;
+ if(event.source!==window.parent||!data||data.type!=='shuban-perrow-setting')return;
+ var el=document.getElementById('layout-config'),config=el?JSON.parse(el.textContent):null;
+ if(!config||data.file!==config.file)return;
+ if(window.setPerRow)window.setPerRow(data.value==='2'?'2':'1',false);
+});
 function setParity(p){var f=document.querySelector('.pageframe');if(!f)return;
 f.classList.remove('pf-odd','pf-even');if(p!=='all')f.classList.add('pf-'+p);
 document.querySelectorAll('.paritybtn').forEach(b=>b.classList.remove('on'));
@@ -2305,41 +2381,39 @@ function toggleInfo(force){var open=(force===undefined)
   ?!document.body.classList.contains('info-open'):!!force;
  document.body.classList.toggle('info-open',open);
  var b=document.getElementById('infobtn');if(b)b.classList.toggle('on',open);}
-/* 默认（首次加载）保持 1:1 声明尺寸居中；fbdlayoutdone 事件里窗口放不下时才自动铺满 */
-function fitWidth(){var w=document.querySelector('.pagewrap'),f=document.querySelector('.pageframe');
- if(!w||!f)return;f.style.zoom=1;var nat=f.offsetWidth||1;
- var avail=w.clientWidth-30;if(avail>80)setZoom(Math.max(.12,Math.min(2,avail/nat)));}
+/* Fit the current row layout; actual-size remains an explicit 1:1 choice. */
+function fitWidth(){fitPerRow(window.fbdPerRowMode||'1');}
 document.addEventListener('keydown',function(e){
  if(e.key==='Escape'){toggleInfo(false);}
  if(!e.ctrlKey)return;var f=document.querySelector('.pageframe');if(!f)return;
  var z=parseFloat(f.style.zoom||'1');
- if(e.key==='='||e.key==='+'){setZoom(Math.min(4,z+0.1));e.preventDefault();}
- if(e.key==='-'){setZoom(Math.max(0.1,z-0.1));e.preventDefault();}});
+ if(e.key==='='||e.key==='+'){window.fbdFitZoom=false;setZoom(Math.min(4,z+0.1));e.preventDefault();}
+ if(e.key==='-'){window.fbdFitZoom=false;setZoom(Math.max(0.1,z-0.1));e.preventDefault();}});
 document.addEventListener('wheel',function(e){            /* Ctrl+滚轮缩放 */
  if(!e.ctrlKey)return;var f=document.querySelector('.pageframe');if(!f)return;
  e.preventDefault();var z=parseFloat(f.style.zoom||'1');
+ window.fbdFitZoom=false;
  setZoom(Math.min(4,Math.max(0.1,z*(e.deltaY<0?1.1:1/1.1))));},{passive:false});
 /* 首次加载：默认 100%（实际大小）居中；分页完成后若窗口放不下页面实际宽度则自动铺满 */
 window.addEventListener('load',function(){var f=document.querySelector('.pageframe');
  if(f&&f.dataset.zoom)setZoom(parseFloat(f.dataset.zoom));});
-/* 每行页数切换的宽度适配：两页合计超屏时按"两页+栏间距"铺满屏幕宽度 */
+/* Adapt the scale to the actual page count per row and its grid gap. */
 function fitPerRow(mode){
+ window.fbdFitZoom=true;
  var w=document.querySelector('.pagewrap'),f=document.querySelector('.pageframe');
  if(!w||!f)return;
  f.style.zoom=1;var nat=f.offsetWidth||1;               // zoom=1 下的自然页宽
  var avail=w.clientWidth-30;
- if(mode==='2'){
-   var mp=document.getElementById('measured-pages');   // 列距取实际计算值，样式调整后公式自动同步
-   var gapPx=parseFloat(getComputedStyle(mp).columnGap)||0;
-   if(nat*2+gapPx>avail&&avail>80)
-     setZoom(Math.max(.12,Math.min(2,(avail-gapPx)/(nat*2))));
-   else setZoom(1);
- } else {
-   if(nat>avail&&avail>80)fitWidth(); else setZoom(1);
- }
+ var perRow=mode==='2'?2:1,gapPx=0;
+ if(perRow===2){var mp=document.getElementById('measured-pages');
+  gapPx=parseFloat(getComputedStyle(mp).columnGap)||0;}
+ var layoutWidth=nat*perRow+gapPx;
+ if(layoutWidth>avail&&avail>80)setZoom(Math.max(.12,Math.min(2,(avail-gapPx)/(nat*perRow))));
+ else setZoom(1);
 }
 window.addEventListener('fbdlayoutdone',function(){
- fitPerRow(window.fbdPerRowMode||'1');});
+ updatePageNavigation();fitPerRow(window.fbdPerRowMode||'1');});
+window.addEventListener('resize',function(){if(window.fbdFitZoom)fitWidth();});
 """
 
 with open(os.path.join(os.path.dirname(__file__), 'pagination.js'), encoding='utf-8') as _js_file:

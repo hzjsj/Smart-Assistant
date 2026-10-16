@@ -6,6 +6,7 @@ import re
 import uuid
 from dataclasses import asdict
 from functools import lru_cache
+from html import escape
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -211,9 +212,18 @@ def get_text(filename: str, plain: bool = False, current_user: User = Depends(ge
 @router.get("/files/{filename}/preview", response_class=HTMLResponse)
 def get_preview(filename: str, current_user: User = Depends(get_current_user)):
     path, result = _file_analysis(current_user, filename)
-    preview = render_html.page(
-        result["_dec"], result["_lex"], result, result["_geo"],
-        str(path), path.name, rel="", root=str(path.parent), inline=True,
+    layout = render_html.preview_html(
+        result["_dec"], result["_lex"], result["_geo"],
+        str(path), str(path.parent), inline=True,
+    )
+    preview = (
+        '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
+        f'<title>{escape(path.name)}</title><style>{render_html.CSS}</style></head>'
+        f'<body class="hide-bg hide-bw">{layout}</body>'
+        f'<script>{render_html.JS}'
+        'window.addEventListener("message",function(event){'
+        'if(event.data&&event.data.type==="shuban-print")window.print();});'
+        '</script></html>'
     )
     return HTMLResponse(content=preview)
 

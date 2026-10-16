@@ -267,10 +267,13 @@ class _Exporter:
         tblw = round((self.geo.text_w or sum(grid)) * _MM_TO_DXA)
         borders = ''.join(f'<w:{s} w:val="{_LINE["Z"][0]}" w:sz="{_LINE["Z"][1]}" w:color="000000"/>'
                           for s in ('top', 'left', 'bottom', 'right'))
+        grid_xml = ''.join(
+            f'<w:gridCol w:w="{round(g * _MM_TO_DXA)}"/>' for g in grid
+        )
         self.body.body.append(
             f'<w:tbl><w:tblPr><w:tblW w:w="{tblw}" w:type="dxa"/>'
             f'<w:tblBorders>{borders}</w:tblBorders><w:tblLayout w:type="fixed"/></w:tblPr>'
-            f'<w:tblGrid>{"".join(f"<w:gridCol w:w=\"{round(g * _MM_TO_DXA)}\"/>" for g in grid)}</w:tblGrid>'
+            f'<w:tblGrid>{grid_xml}</w:tblGrid>'
             + ''.join(rows_xml) + '</w:tbl>')
         self.dirty = True
         self.since_sect += 1

@@ -9,6 +9,12 @@ async function paginatePreview() {
   if (!source || !template || !pages) return;
   const status = document.getElementById('layout-status');
   const config = JSON.parse(document.getElementById('layout-config').textContent);
+  if (window.parent !== window && Array.isArray(config.previewNotes)) {
+    window.parent.postMessage({type:'shuban-preview-notes', notes:config.previewNotes}, '*');
+  }
+  if (window.parent !== window) {
+    window.parent.postMessage({type:'shuban-perrow-request', file:config.file}, '*');
+  }
   const prelude = document.getElementById('layout-prelude');
   let savedColumns = null;
   try { savedColumns = Number(localStorage.getItem('fbd-columns:'+config.file)); } catch (_) {}
@@ -501,6 +507,7 @@ async function paginatePreview() {
     const substitutions = window.fbdLayout.fonts.filter(f => f.substituted);
     status.textContent = `已测量 ${frames.length} 页；${substitutions.length ? '字体替代：'+substitutions.map(f=>f.requested+' → '+f.selected).join('、') : '已找到声明字体'}；` +
       (issues.length ? [...new Set(issues)].join('；') : '基础横排布局完成');
+    window.parent.postMessage({type:'shuban-layout-status', status:status.textContent}, '*');
     // 颜色清单（CS 彩色注解的可见片段）+ 按色隐藏；隐藏清单同步到「下载 PDF/Word」链接
     const colorCount = new Map();
     document.getElementById('measured-pages').querySelectorAll('[data-color]').forEach(el => {
@@ -548,12 +555,6 @@ async function paginatePreview() {
   }
 }
 
-function downloadLayout() {
-  if (!window.fbdLayoutReady) return;
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(new Blob([JSON.stringify(window.fbdLayout,null,2)], {type:'application/json'}));
-  link.download = 'fbd-layout.json'; link.click(); URL.revokeObjectURL(link.href);
-}
 function setColumns(count) {
   const el=document.getElementById('layout-config');const config=JSON.parse(el.textContent);
   config.columns=Number(count);el.textContent=JSON.stringify(config);
@@ -562,19 +563,29 @@ function setColumns(count) {
 }
 /* 「每行页数」显示配置：仅切换 #measured-pages 的排布类，不触发重分页；按文件记忆 */
 function applyPerRow(file) {
-  let per = '1';
-  try { per = localStorage.getItem('fbd-perrow:'+file) || '1'; } catch (_) {}
+  let per = window.fbdPerRowMode === '2' ? '2' : '1';
+  if (window.parent === window) {
+    try { per = localStorage.getItem('fbd-perrow:'+file) || per; } catch (_) {}
+  }
   window.fbdPerRowMode = per;
   const mp = document.getElementById('measured-pages');
   if (mp) mp.classList.toggle('perrow-2', per === '2');
   const sel = document.getElementById('perrow-choice');
   if (sel) sel.value = per === '2' ? '2' : '1';
 }
-function setPerRow(n) {
+function setPerRow(n, notifyParent = true) {
   const el = document.getElementById('layout-config');
   const file = el ? JSON.parse(el.textContent).file : '';
-  try { localStorage.setItem('fbd-perrow:'+file, n); } catch (_) {}
+  const per = n === '2' ? '2' : '1';
+  window.fbdPerRowMode = per;
+  if (window.parent === window) {
+    try { localStorage.setItem('fbd-perrow:'+file, per); } catch (_) {}
+  }
   applyPerRow(file);
-  if (window.fitPerRow) window.fitPerRow(n);   // 切换时计算宽度：两页超屏则铺满屏幕宽度
+  if (notifyParent && window.parent !== window) {
+    window.parent.postMessage({type:'shuban-perrow-change', file, value:per}, '*');
+  }
+  if (window.fitPerRow) window.fitPerRow(per);   // 切换时计算宽度：两页超屏则铺满屏幕宽度
+  if (window.updatePageNavigation) window.updatePageNavigation();
 }
 window.addEventListener('load', paginatePreview);
