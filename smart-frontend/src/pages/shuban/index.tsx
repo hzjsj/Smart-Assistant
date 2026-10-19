@@ -689,7 +689,7 @@ function ShubanWorkspace() {
               <Dragger {...uploadProps} className={styles.upload}>
                 <p className="ant-upload-drag-icon"><InboxOutlined /></p>
                 <p className="ant-upload-text">拖放文件到此处，或选择文件</p>
-                <p className="ant-upload-hint">支持 .docx 按模板转 FBD、.zip 压缩包、.fbd、同名 .PRO 和版面图片；单个上传文件最大 50 MB</p>
+                <p className="ant-upload-hint">支持 .docx 按模板转 FBD、.zip 压缩包、.fbd、同名 .PRO 和版面图片；单个上传文件最大 500 MB</p>
                 <div className={styles.uploadActions}>
                   <Button icon={<PlusOutlined />}>选择文件</Button>
                 </div>

@@ -34,7 +34,8 @@ router = APIRouter(
 )
 
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "uploads" / "shuban"
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024
+MAX_ARCHIVE_MEMBER_BYTES = 50 * 1024 * 1024
 MAX_ARCHIVE_FILES = 1000
 MAX_ARCHIVE_EXPANDED_BYTES = 512 * 1024 * 1024
 ALLOWED_EXTENSIONS = {
@@ -42,7 +43,7 @@ ALLOWED_EXTENSIONS = {
     ".tif", ".tiff", ".bmp", ".eps", ".ps",
 }
 ARCHIVE_FILE_EXTENSIONS = ALLOWED_EXTENSIONS - {".zip"}
-MAX_DOCX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_DOCX_UPLOAD_BYTES = 500 * 1024 * 1024
 
 
 def _user_dir(user: User) -> Path:
@@ -145,7 +146,7 @@ def _extract_archive(archive_path: Path, root: Path, archive_size: int) -> dict:
                 raise HTTPException(status_code=400, detail=f"压缩包不支持符号链接：{entry.filename}")
             if entry.flag_bits & 0x1:
                 raise HTTPException(status_code=400, detail=f"压缩包内文件已加密：{entry.filename}")
-            if entry.file_size > MAX_UPLOAD_BYTES:
+            if entry.file_size > MAX_ARCHIVE_MEMBER_BYTES:
                 raise HTTPException(status_code=413, detail=f"压缩包内单个文件不能超过 50 MB：{name}")
 
             folded_name = relative_name.casefold()
@@ -192,7 +193,7 @@ def _extract_archive(archive_path: Path, root: Path, archive_size: int) -> dict:
                 with archive.open(entry) as source, destination.open("xb") as output:
                     while chunk := source.read(1024 * 1024):
                         written += len(chunk)
-                        if written > entry.file_size or written > MAX_UPLOAD_BYTES:
+                        if written > entry.file_size or written > MAX_ARCHIVE_MEMBER_BYTES:
                             raise HTTPException(status_code=400, detail=f"压缩包内文件大小异常：{relative_name}")
                         output.write(chunk)
                 if written != entry.file_size:
@@ -329,7 +330,7 @@ async def convert_word_file(
             while chunk := await file.read(1024 * 1024):
                 size += len(chunk)
                 if size > MAX_DOCX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="Word 文件不能超过 50 MB")
+                    raise HTTPException(status_code=413, detail="Word 文件不能超过 500 MB")
                 output.write(chunk)
         if size == 0:
             raise HTTPException(status_code=400, detail="Word 文件为空")
@@ -393,7 +394,7 @@ async def upload_file(
             while chunk := await file.read(1024 * 1024):
                 total += len(chunk)
                 if total > MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="单个文件不能超过 50 MB")
+                    raise HTTPException(status_code=413, detail="单个上传文件不能超过 500 MB")
                 output.write(chunk)
         if suffix == ".zip":
             result = _extract_archive(temporary, root, total)
