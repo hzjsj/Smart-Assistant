@@ -3,6 +3,30 @@ import type { ShubanAst, ShubanFile, ShubanReport, ShubanToken } from './data';
 
 const API_BASE = '/api/shuban';
 
+export type WordTemplate = {
+  id: string;
+  name: string;
+  description: string;
+  pageWidth: number;
+  pageHeight: number;
+  columns: number;
+  columnGap: number;
+};
+
+export type WordConversionResult = {
+  id: string;
+  templateId: string;
+  templateName: string;
+  fileName: string;
+  previewFile: string;
+  zipFile: string;
+  contentVerified: boolean;
+  warnings: string[];
+  geometry?: { page?: number[]; columns?: number; column_w?: number; column_gap?: number };
+  previewUrl: string;
+  downloadUrl: string;
+};
+
 async function withErrorDetail<T>(task: () => Promise<T>): Promise<T> {
   try {
     return await task();
@@ -75,5 +99,27 @@ export async function getPreview(filename: string): Promise<string> {
       throw new Error(body.detail || '排版预览加载失败');
     }
     return response.text();
+  });
+}
+
+export async function getWordTemplates(): Promise<{ templates: WordTemplate[] }> {
+  return withErrorDetail(() =>
+    request(`${API_BASE}/word-templates`, { method: 'GET', skipErrorHandler: true }),
+  );
+}
+
+export async function convertWord(file: File, templateId: string): Promise<WordConversionResult> {
+  return withErrorDetail(async () => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('template_id', templateId);
+    const response = await fetch(`${API_BASE}/word-conversions`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'same-origin',
+    });
+    const payload = await response.json().catch(() => ({})) as WordConversionResult & { detail?: string };
+    if (!response.ok) throw new Error(payload.detail || 'Word 排版失败');
+    return payload;
   });
 }

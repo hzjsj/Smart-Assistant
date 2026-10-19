@@ -31,9 +31,11 @@ import {
   Input,
   Layout,
   Menu,
+  Modal,
   Popover,
   Progress,
   Segmented,
+  Select,
   Space,
   Spin,
   Splitter,
@@ -49,7 +51,17 @@ import type { MenuProps, TableColumnsType, UploadProps } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { ShubanAst, ShubanFile, ShubanReport, ShubanToken } from './data';
-import { getAst, getPreview, getReport, getText, getTokens, listFiles } from './service';
+import {
+  convertWord,
+  getAst,
+  getPreview,
+  getReport,
+  getText,
+  getTokens,
+  getWordTemplates,
+  listFiles,
+} from './service';
+import type { WordConversionResult, WordTemplate } from './service';
 import { useStyles } from './styles';
 
 const { Sider } = Layout;
@@ -306,6 +318,12 @@ function ShubanWorkspace() {
   const [fileFilters, setFileFilters] = useState<FileFilters>({ name: '' });
   const [uploadingCount, setUploadingCount] = useState(0);
   const [uploadPercent, setUploadPercent] = useState(0);
+  const [pendingWordFile, setPendingWordFile] = useState<File>();
+  const [wordModalOpen, setWordModalOpen] = useState(false);
+  const [wordTemplateId, setWordTemplateId] = useState<string>();
+  const [wordSubmitting, setWordSubmitting] = useState(false);
+  const [wordResult, setWordResult] = useState<WordConversionResult>();
+  const [wordResultOpen, setWordResultOpen] = useState(false);
   const [layoutStatus, setLayoutStatus] = useState('');
   const [previewNotes, setPreviewNotes] = useState<string[]>([]);
   const previewFrame = useRef<HTMLIFrameElement>(null);
@@ -335,6 +353,11 @@ function ShubanWorkspace() {
   }, []);
 
   const filesQuery = useQuery({ queryKey: queryKeys.files, queryFn: listFiles });
+  const wordTemplatesQuery = useQuery({
+    queryKey: ['shuban', 'word-templates'],
+    queryFn: getWordTemplates,
+    enabled: wordModalOpen,
+  });
   const selectedReport = useQuery({
     queryKey: queryKeys.report(selectedFile || ''),
     queryFn: () => getReport(selectedFile || ''),
@@ -375,14 +398,40 @@ function ShubanWorkspace() {
     if (filename) openFile(filename);
   };
 
+  const startWordConversion = async () => {
+    if (!pendingWordFile || !wordTemplateId) return;
+    setWordSubmitting(true);
+    try {
+      const result = await convertWord(pendingWordFile, wordTemplateId);
+      setWordResult(result);
+      setWordModalOpen(false);
+      setWordResultOpen(true);
+      setPendingWordFile(undefined);
+    } catch (error) {
+      void appMessage.error(error instanceof Error ? error.message : 'Word 排版失败');
+    } finally {
+      setWordSubmitting(false);
+    }
+  };
+
   const uploadProps: UploadProps = {
     name: 'file',
     action: '/api/shuban/upload',
     multiple: true,
-    accept: '.zip,.fbd,.pro,.png,.jpg,.jpeg,.gif,.webp,.svg,.tif,.tiff,.bmp,.eps,.ps',
+    accept: '.docx,.zip,.fbd,.pro,.png,.jpg,.jpeg,.gif,.webp,.svg,.tif,.tiff,.bmp,.eps,.ps',
     withCredentials: true,
     showUploadList: false,
+    beforeUpload(file) {
+      if (file.name.toLowerCase().endsWith('.docx')) {
+        setPendingWordFile(file);
+        setWordTemplateId(undefined);
+        setWordModalOpen(true);
+        return Upload.LIST_IGNORE;
+      }
+      return true;
+    },
     onChange(info) {
+      if (info.file.name.toLowerCase().endsWith('.docx')) return;
       const active = info.fileList.filter((item) => item.status === 'uploading');
       setUploadingCount(active.length);
       setUploadPercent(active.length
@@ -640,7 +689,7 @@ function ShubanWorkspace() {
               <Dragger {...uploadProps} className={styles.upload}>
                 <p className="ant-upload-drag-icon"><InboxOutlined /></p>
                 <p className="ant-upload-text">拖放文件到此处，或选择文件</p>
-                <p className="ant-upload-hint">支持 .zip 压缩包、.fbd、同名 .PRO 和版面图片；单个上传文件最大 50 MB</p>
+                <p className="ant-upload-hint">支持 .docx 按模板转 FBD、.zip 压缩包、.fbd、同名 .PRO 和版面图片；单个上传文件最大 50 MB</p>
                 <div className={styles.uploadActions}>
                   <Button icon={<PlusOutlined />}>选择文件</Button>
                 </div>
@@ -827,6 +876,96 @@ function ShubanWorkspace() {
             </section>
           )}
         </main>
+        <Modal
+          title="选择 Word 排版模板"
+          open={wordModalOpen}
+          onCancel={() => {
+            if (wordSubmitting) return;
+            setWordModalOpen(false);
+            setPendingWordFile(undefined);
+          }}
+          onOk={() => void startWordConversion()}
+          okText="开始排版"
+          cancelText="取消"
+          confirmLoading={wordSubmitting}
+          okButtonProps={{ disabled: !pendingWordFile || !wordTemplateId }}
+          destroyOnHidden
+        >
+          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Typography.Text>{pendingWordFile?.name || '已选择 Word 文档'}</Typography.Text>
+            <Form layout="vertical">
+              <Form.Item label="版式尺寸" required>
+                <Select
+                  value={wordTemplateId}
+                  loading={wordTemplatesQuery.isLoading}
+                  placeholder="选择已有版式模板"
+                  options={(wordTemplatesQuery.data?.templates || []).map((template: WordTemplate) => ({
+                    value: template.id,
+                    label: `${template.name} · ${template.pageWidth}×${template.pageHeight} mm`,
+                  }))}
+                  onChange={setWordTemplateId}
+                  notFoundContent={wordTemplatesQuery.isError ? '模板加载失败' : '暂无可用模板'}
+                />
+              </Form.Item>
+            </Form>
+            {(() => {
+              const selected = wordTemplatesQuery.data?.templates.find((item) => item.id === wordTemplateId);
+              return selected ? (
+                <Descriptions size="small" bordered column={1}>
+                  <Descriptions.Item label="页面尺寸">{selected.pageWidth}×{selected.pageHeight} mm</Descriptions.Item>
+                  <Descriptions.Item label="分栏">{selected.columns} 栏，栏距 {selected.columnGap} mm</Descriptions.Item>
+                  <Descriptions.Item label="模板说明">{selected.description}</Descriptions.Item>
+                </Descriptions>
+              ) : null;
+            })()}
+            <Alert
+              type="info"
+              showIcon
+              title="转换会保留可识别的文字、表格、公式和图片；浏览器预览为近似排版，最终以方正书版发排为准。"
+            />
+          </Space>
+        </Modal>
+
+        <Modal
+          title="Word 排版结果"
+          open={wordResultOpen}
+          footer={null}
+          onCancel={() => setWordResultOpen(false)}
+          destroyOnHidden
+        >
+          {wordResult && (
+            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+              <Descriptions size="small" bordered column={1}>
+                <Descriptions.Item label="FBD 文件">{wordResult.fileName}</Descriptions.Item>
+                <Descriptions.Item label="使用模板">{wordResult.templateName}</Descriptions.Item>
+                <Descriptions.Item label="内容核对">{wordResult.contentVerified ? '通过' : '需要人工核对'}</Descriptions.Item>
+              </Descriptions>
+              {wordResult.warnings.length > 0 && (
+                <Alert
+                  type="warning"
+                  showIcon
+                  title="转换告警"
+                  description={(
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {wordResult.warnings.map((warning) => <li key={warning}>{warning}</li>)}
+                    </ul>
+                  )}
+                />
+              )}
+              <Space wrap>
+                <Button type="primary" icon={<FileSearchOutlined />} href={wordResult.previewUrl} target="_blank">
+                  打开预览
+                </Button>
+                <Button icon={<DownloadOutlined />} href={wordResult.downloadUrl}>
+                  下载排版 ZIP
+                </Button>
+              </Space>
+              <Typography.Text type="secondary" copyable={{ text: `${window.location.origin}${wordResult.previewUrl}` }}>
+                预览地址：{window.location.origin}{wordResult.previewUrl}
+              </Typography.Text>
+            </Space>
+          )}
+        </Modal>
       </Layout>
     </Layout>
   );

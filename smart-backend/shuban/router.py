@@ -14,8 +14,9 @@ from functools import lru_cache
 from html import escape
 from pathlib import Path, PurePosixPath
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, Response
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from auth import get_current_user
 from users.models import User
@@ -23,6 +24,8 @@ from shuban.fbdview import annotations, ast as ast_mod, macros, render_html, rep
 from shuban.fbdview.bytes_io import read as read_bytes
 from shuban.fbdview.layout import analyze_geometry
 from shuban.fbdview.lexer import tokenize
+from shuban.word_conversion import convert_docx
+from shuban.word_templates import get_template, list_templates
 
 router = APIRouter(
     prefix="/api/shuban",
@@ -39,6 +42,7 @@ ALLOWED_EXTENSIONS = {
     ".tif", ".tiff", ".bmp", ".eps", ".ps",
 }
 ARCHIVE_FILE_EXTENSIONS = ALLOWED_EXTENSIONS - {".zip"}
+MAX_DOCX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 def _user_dir(user: User) -> Path:
@@ -60,6 +64,17 @@ def _safe_file(user: User, filename: str) -> Path:
     path = (root / name).resolve()
     if path.parent != root or not path.is_file() or path.suffix.lower() != ".fbd":
         raise HTTPException(status_code=404, detail="FBD 文件不存在")
+    return path
+
+
+def _conversion_dir(user: User, conversion_id: str) -> Path:
+    if not re.fullmatch(r"[a-f0-9]{32}", conversion_id):
+        raise HTTPException(status_code=404, detail="转换记录不存在")
+    root = _user_dir(user)
+    base = (root / "word-conversions").resolve()
+    path = (base / conversion_id).resolve()
+    if base not in path.parents or not path.is_dir():
+        raise HTTPException(status_code=404, detail="转换记录不存在")
     return path
 
 
@@ -281,6 +296,80 @@ def list_files(current_user: User = Depends(get_current_user)):
         stat = path.stat()
         files.append({"name": path.name, "size": stat.st_size, "updatedAt": stat.st_mtime})
     return {"files": files}
+
+
+@router.get("/word-templates")
+def get_word_templates(current_user: User = Depends(get_current_user)):
+    return {"templates": list_templates()}
+
+
+@router.post("/word-conversions")
+async def convert_word_file(
+    file: UploadFile = File(...),
+    template_id: str = Form(...),
+    current_user: User = Depends(get_current_user),
+):
+    name = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+    if Path(name).suffix.lower() != ".docx":
+        raise HTTPException(status_code=400, detail="仅支持 .docx Word 文件")
+    template = get_template(template_id)
+    if not template:
+        raise HTTPException(status_code=400, detail="请选择有效的排版模板")
+
+    root = _user_dir(current_user)
+    conversion_id = uuid.uuid4().hex
+    conversion_root = root / "word-conversions"
+    conversion_root.mkdir(parents=True, exist_ok=True)
+    output_dir = conversion_root / conversion_id
+    output_dir.mkdir()
+    source = output_dir / ".source.docx"
+    size = 0
+    try:
+        with source.open("wb") as output:
+            while chunk := await file.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_DOCX_UPLOAD_BYTES:
+                    raise HTTPException(status_code=413, detail="Word 文件不能超过 50 MB")
+                output.write(chunk)
+        if size == 0:
+            raise HTTPException(status_code=400, detail="Word 文件为空")
+        result = await run_in_threadpool(
+            convert_docx, source, output_dir, name, template, conversion_id,
+        )
+        result["previewUrl"] = f"/api/shuban/word-conversions/{conversion_id}/preview"
+        result["downloadUrl"] = f"/api/shuban/word-conversions/{conversion_id}/download"
+        return result
+    except HTTPException:
+        shutil.rmtree(output_dir, ignore_errors=True)
+        raise
+    except Exception as exc:
+        shutil.rmtree(output_dir, ignore_errors=True)
+        detail = str(exc).strip().splitlines()[-1] if str(exc).strip() else type(exc).__name__
+        for sensitive_path in (str(source), str(output_dir), str(template.header_path), str(template.pro_path)):
+            detail = detail.replace(sensitive_path, "")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Word 转 FBD 失败（{type(exc).__name__}）：{detail[:220]}",
+        ) from exc
+    finally:
+        await file.close()
+        source.unlink(missing_ok=True)
+
+
+@router.get("/word-conversions/{conversion_id}/preview", response_class=HTMLResponse)
+def get_word_conversion_preview(conversion_id: str, current_user: User = Depends(get_current_user)):
+    path = _conversion_dir(current_user, conversion_id) / "preview.html"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="预览文件不存在")
+    return FileResponse(path, media_type="text/html; charset=utf-8")
+
+
+@router.get("/word-conversions/{conversion_id}/download")
+def download_word_conversion(conversion_id: str, current_user: User = Depends(get_current_user)):
+    path = _conversion_dir(current_user, conversion_id) / "排版结果.zip"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="排版 ZIP 不存在")
+    return FileResponse(path, media_type="application/zip", filename=path.name)
 
 
 @router.post("/upload")
