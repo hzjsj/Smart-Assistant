@@ -192,8 +192,17 @@ def _image_index(root: str | None) -> dict[str, list[str]]:
     for dp, _dns, fns in os.walk(root):
         for fn in fns:
             if os.path.splitext(fn)[1].lower() in exts:
-                idx.setdefault(fn.lower(), []).append(os.path.join(dp, fn))
-                idx.setdefault(re.sub(r"\s+", "", fn.lower()), []).append(os.path.join(dp, fn))
+                path = os.path.join(dp, fn)
+                names = [fn]
+                try:
+                    legacy_name = fn.encode("cp437").decode("gb18030")
+                    if legacy_name != fn and any("\u3400" <= char <= "\u9fff" for char in legacy_name):
+                        names.append(legacy_name)
+                except (UnicodeEncodeError, UnicodeDecodeError):
+                    pass
+                for name in names:
+                    idx.setdefault(name.lower(), []).append(path)
+                    idx.setdefault(re.sub(r"\s+", "", name.lower()), []).append(path)
     _IMG_INDEX.clear()
     _IMG_INDEX.update(idx)
     _IMG_INDEX_STATE.update(root=root, t=now)
@@ -212,14 +221,47 @@ def _shared_prefix_len(a: str, b: str) -> int:
 
 def resolve_image(name: str, fbd_path: str, root: str | None = None,
                   detail: dict | None = None) -> str | None:
-    """按名（忽略大小写与空白）查找图片：同目录/上级目录 → 全工程索引（取路径最相近者）。"""
-    clean = re.sub(r"[\s\r\n]+", "", name or "")
+    """先按注解相对路径查找，再按文件名回退；回退时取路径最相近者。"""
+    raw_name = (name or "").strip()
+    if len(raw_name) >= 2 and raw_name[0] == "<" and raw_name[-1] == ">":
+        raw_name = raw_name[1:-1]
+    d = os.path.realpath(os.path.dirname(os.path.abspath(fbd_path)))
+    root_abs = os.path.realpath(root) if root else d
+
+    # 注解可带 Windows 路径；服务端不能访问客户端路径，因此仅尝试包内相对路径。
+    normalized = raw_name.replace("\\", "/")
+    is_windows_absolute = bool(re.match(r"^[A-Za-z]:/", normalized) or normalized.startswith("//"))
+    if normalized and not is_windows_absolute and "/" in normalized:
+        parts = [part for part in normalized.split("/") if part not in {"", "."}]
+        if parts and ".." not in parts:
+            for base in (d, root_abs):
+                candidate = os.path.realpath(os.path.join(base, *parts))
+                try:
+                    if os.path.commonpath([candidate, root_abs]) != root_abs:
+                        continue
+                except ValueError:
+                    continue
+
+                current = root_abs
+                try:
+                    for part in os.path.relpath(candidate, root_abs).split(os.sep):
+                        if part == ".":
+                            continue
+                        matches = {entry.casefold(): entry for entry in os.listdir(current)}
+                        current = os.path.join(current, matches[part.casefold()])
+                    if os.path.isfile(current):
+                        if detail is not None and os.path.abspath(current) != os.path.abspath(os.path.join(d, *parts)):
+                            detail["via_relative_path"] = True
+                            detail["path"] = current
+                        return current
+                except (KeyError, OSError):
+                    continue
+
+    clean = re.sub(r"[\s\r\n]+", "", raw_name).replace("\\", "/").rsplit("/", 1)[-1]
     clean = re.split(r"[（(]", clean)[0]
     if len(clean) < 2:
         return None
-    d = os.path.dirname(os.path.abspath(fbd_path))
     if root:
-        root_abs = os.path.abspath(root)
         dirs = [d] if os.path.commonpath([d, root_abs]) == root_abs else [root_abs]
         if root_abs not in dirs:
             dirs.append(root_abs)
@@ -677,7 +719,11 @@ class PreviewRenderer:
         self.line_has_content = False
         self.title = None
         self.line_align = False
+        self.line_align_has_image = False
+        self.image_caption_open = False
         self.captures = []
+        self.last_image_ref = None
+        self.ts_state = None
         self.note_count = 0
         self.prelude = []
         self.saw_fl = False
@@ -807,6 +853,14 @@ class PreviewRenderer:
     def text(self, s: str) -> None:
         if not s or s == "\n":
             return
+        # A centered XC image group ends before its following caption; adjacent images stay grouped.
+        if self.line_align and self.line_align_has_image and not self.ts_state and s.strip():
+            self._emit('</div>')
+            self.line_align = False
+            self.line_align_has_image = False
+            self.indent_next = False
+            self._emit('<div class="fbd-image-caption">')
+            self.image_caption_open = True
         if self.pending_circle is not None:
             self.pending_circle += s
             return
@@ -866,6 +920,13 @@ class PreviewRenderer:
                 self.text(t.raw)
             else:
                 self._annot(t)
+        if self.ts_state:
+            self._emit('</figcaption></figure>' if self.ts_state['wrapped'] else '</div>')
+            self.ts_state = None
+            self.layout_warnings.add('未闭合的 TS 图说已收口')
+        if self.image_caption_open:
+            self._emit('</div>')
+            self.image_caption_open = False
         self._jy_flush()
         if self.line_align:
             self._emit('</div>')
@@ -885,6 +946,9 @@ class PreviewRenderer:
     def _ctrl(self, t) -> None:
         code = t.raw
         if code in ("A4", "A5"):
+            if self.image_caption_open:
+                self._emit('</div>')
+                self.image_caption_open = False
             self.script_next = None
             if self.line_align:
                 self._emit('</div>')
@@ -937,7 +1001,7 @@ class PreviewRenderer:
     # 会开/闭结构块（<div>、框、分栏、层）的注解：其前必须先把居右行收尾，
     # 否则块级元素会被塞进居右行的右半里（嵌套不合法）
     _JY_BREAK = frozenset({"JZ", "JY", "ZK", "BG", "BH", "FL", "FK", "SX", "BW", "BJ", "BP",
-                           "TP", "XC", "ML", "LM", "LL", "ZD", "BT", "ZW"})
+                           "TP", "TS", "XC", "ML", "LM", "LL", "ZD", "BT", "ZW"})
 
     def _annot(self, t) -> None:
         n, p = t.name, t.params
@@ -990,6 +1054,40 @@ class PreviewRenderer:
                 self._emit('<span class="header-anchor" data-atomic="header"><template>' + content + '</template></span>')
             else:
                 self.layout_warnings.add('CT 单字符词条抽取尚未实现')
+            return
+        if n == 'TS':
+            if p.startswith((')', '）')) and self.ts_state:
+                wrapped = self.ts_state['wrapped']
+                closing = '</figcaption></figure>' if wrapped else '</div>'
+                self._emit(closing)
+                self.ts_state = None
+                if wrapped and self.line_align:
+                    self._emit('</div>')
+                    self.line_align = False
+                    self.line_align_has_image = False
+            elif p.startswith(('(', '（')) and not self.ts_state:
+                align_match = re.search(r'([LMR])!?$', p)
+                align = {'L': 'left', 'M': 'center', 'R': 'right'}.get(
+                    align_match.group(1) if align_match else 'L', 'left')
+                caption_style = f'text-align:{align};'
+                if '!' in p:
+                    caption_style += 'writing-mode:vertical-rl;'
+                target = self._target_list()
+                image_ref = self.last_image_ref
+                wrapped = bool(image_ref and image_ref[0] is target
+                               and image_ref[1] == len(target) - 1)
+                if wrapped:
+                    image = target[image_ref[1]]
+                    target[image_ref[1]] = (
+                        '<figure class="fbd-figure" title="TS 图说注解：图题排在图片下方">'
+                        + image + f'<figcaption style="{caption_style}">'
+                    )
+                else:
+                    self.layout_warnings.add('TS 图说未紧跟可识别的图片，按独立图题显示')
+                    self._emit(f'<div class="fbd-figcaption" style="{caption_style}">')
+                if re.search(r'[ZY]', p):
+                    self.layout_warnings.add('TS 图片左右侧排法暂按图片下方近似')
+                self.ts_state = {'wrapped': wrapped}
             return
         if n == 'BT':
             if p.startswith((')', '）')):
@@ -1110,6 +1208,7 @@ class PreviewRenderer:
                     self._emit('</div>')
                 self._emit('<div class="alignline" style="text-align:center">')
                 self.line_align = True
+                self.line_align_has_image = False
             return
         # ---- 自空（〖ZK(〗悬挂缩进开 / 〖ZK)〗闭） ----
         # 小样里「题号 + 〖ZK(〗」成对出现（如 1.〖ZK(〗、）（1）〖ZK(〗、(1)〖ZK(〗），
@@ -1308,17 +1407,28 @@ class PreviewRenderer:
         table = self.tables[-1]
         if not any(table['content']):
             return
-        spec = table['spec'] or {'cells': [{'width': self.geo.column_w or 170, 'align': 'left', 'line': 'Z'}], 'top': 'Z', 'valign': 'middle'}
+        available = max(1, (self.geo.column_w or self.geo.text_w or 170) - 2)
+        spec = table['spec'] or {'cells': [{'width': available, 'align': 'left', 'line': 'Z'}], 'top': 'Z', 'valign': 'middle'}
         count = max(len(spec['cells']), len(table['content']))
-        table['width'] = max(table.get('width',0),sum(c['width'] for c in spec['cells']))
-        if not table.get('grid'):
-            table['grid'] = [c['width'] for c in spec['cells']]
         cells = []
         cell_start = 0
         if len(table['content']) > len(spec['cells']):
             self.layout_warnings.add('表格内容列多于 BH 定义列；额外列按等宽近似')
+        row_specs = [dict(cell) for cell in spec['cells']]
+        for _ in range(len(row_specs), count):
+            row_specs.append({'width': available / count, 'align': 'left', 'line': 'Z'})
+        row_width = sum(cell['width'] for cell in row_specs)
+        if row_width > available:
+            scale = available / row_width
+            for cell in row_specs:
+                cell['width'] *= scale
+            row_width = available
+            self.layout_warnings.add('表格总宽超出扣除左右边距后的栏宽，已按比例压缩')
+        table['width'] = max(table.get('width', 0), row_width)
+        if not table.get('grid'):
+            table['grid'] = [cell['width'] for cell in row_specs]
         for i in range(count):
-            cell = spec['cells'][i] if i < len(spec['cells']) else {'width': (self.geo.column_w or 170) / count, 'align': 'left', 'line': 'Z'}
+            cell = row_specs[i]
             content = ''.join(table['content'][i]) if i < len(table['content']) else ''
             height = f"height:{spec['height']:g}mm;" if spec.get('height') else ''
             lr = '1mm'      # 单元格左右内边距：成品里文字与线留有一点距离
@@ -1512,16 +1622,30 @@ class PreviewRenderer:
         if not s:
             return
         if self.sx is not None:                # 上下注解内：内容进上半/下半缓冲
-            self.sx[self.sx["phase"]].append(s)
+            target = self.sx[self.sx["phase"]]
+            target.append(s)
+            if s.startswith('<img') or s.startswith('<span class="imgph'):
+                self.last_image_ref = (target, len(target) - 1)
+                if self.line_align:
+                    self.line_align_has_image = True
             return
         if self.jy is not None:
             if self._target_list() is not self.jy["target"]:
                 self._jy_flush()               # 换层（进/出 BJ/BW/BP）时先收尾本行
             else:
                 self.jy["right"].append(s)
+                if s.startswith('<img') or s.startswith('<span class="imgph'):
+                    self.last_image_ref = (self.jy['right'], len(self.jy['right']) - 1)
+                    if self.line_align:
+                        self.line_align_has_image = True
                 return
-        self._target_list().append(s)
-        self.block_finished = s.endswith(('</div>', '</table>')) or s.startswith('<div class="khspace"')
+        target = self._target_list()
+        target.append(s)
+        if s.startswith('<img') or s.startswith('<span class="imgph'):
+            self.last_image_ref = (target, len(target) - 1)
+            if self.line_align:
+                self.line_align_has_image = True
+        self.block_finished = s.endswith(('</div>', '</table>', '</figure>')) or s.startswith('<div class="khspace"')
         if self.block_finished or s.startswith('<br'):
             self.line_has_content = False
         elif s.startswith(('<span', '<img', '<sup')):
@@ -1669,7 +1793,7 @@ class PreviewRenderer:
         if not w_mm:
             # 无可靠尺寸（图片缺失/异形且注解未给占位尺寸）时兜底限宽，
             # 绝不放任 <img> 用栅格 PNG 的自然像素尺寸（受 /asset 上限影响会撑爆版面）。
-            style += "max-width:100%;height:auto;"
+            style += "max-width:calc(100% - 2mm);height:auto;"
         tip = f"{name} {fn}" + ("　" + "；".join(notes) if notes else "")
 
         if path and (ext in _IMG_RASTER or ext in _IMG_CONVERT or
@@ -2217,10 +2341,16 @@ ul.warn{margin:0;padding-left:18px;font-size:12px;color:var(--text-2)}
   font-size:12pt;font-family:'FZShuSong-Z01','SimSun',serif;overflow:visible;word-break:normal;line-break:strict;}
 #layout-source .zklabel{white-space:nowrap}
 #layout-prelude{position:absolute;left:-100000px;top:0;visibility:hidden;line-height:0;font-size:12pt;}
-.fbdtable{border-collapse:collapse;border-spacing:0;table-layout:fixed;margin:0;max-width:none}
+.fbdtable{border-collapse:collapse;border-spacing:0;table-layout:fixed;margin:2mm 1mm;max-width:calc(100% - 2mm);box-sizing:border-box}
 .fbdtable tr{break-inside:avoid;page-break-inside:avoid}
 .fbdtable td{overflow-wrap:anywhere;box-sizing:border-box;white-space:normal}   /* 覆盖 .positioned-fragment 的 nowrap，单元格里允许换行 */
 .fbdtable td [data-channel]{line-height:inherit!important}
+.fbd-figure{display:block;max-width:calc(100% - 2mm);margin:2mm 1mm;break-inside:avoid;page-break-inside:avoid}
+.fbd-figure img{display:block;max-width:100%;height:auto;margin:0}
+.fbd-figure img.img{max-width:100%;margin:0}
+.fbd-figure figcaption{display:block;max-width:100%;line-height:1.35}
+.fbd-figcaption{display:block;max-width:100%;line-height:1.35}
+.fbd-image-caption{display:block;margin:1mm 1mm 2mm;text-align:center;break-inside:avoid;page-break-inside:avoid}
 .positioned-fragment{white-space:nowrap}
 /* 页面(含出血) > 成品：两者不等时，页面比成品多出的那圈就是出血区，用斜纹带标出 */
 .pageframe.pf-trim{background:repeating-linear-gradient(45deg,#eef2f7 0 4px,#e3e9f0 4px 8px)}
@@ -2249,10 +2379,10 @@ ul.warn{margin:0;padding-left:18px;font-size:12px;color:var(--text-2)}
 .sxbox .sxdn{display:block;position:absolute;left:0;right:0;z-index:1}
 .bgbox{border:1px dashed #bbb;padding:2px 4px;margin:2px 0}
 .imgph{display:inline-block;border:1px dashed #7a8b9c;background:#f4f8fc;color:#3d5a75;
-  padding:3px 6px;margin:2px;font-size:11px;border-radius:4px;text-align:center;vertical-align:middle}
+  padding:3px 6px;margin:1mm;max-width:calc(100% - 2mm);box-sizing:border-box;font-size:11px;border-radius:4px;text-align:center;vertical-align:middle}
 .imgph.eps{border-color:#8a6d1f;background:#fff8e1;color:#7a5c00}
 .imgph.miss{border-color:#c9a0a0;background:#fdeef2;color:#8a1c3c}
-img.img{display:inline-block;vertical-align:middle;max-width:none;height:auto}
+img.img{display:inline-block;vertical-align:middle;max-width:calc(100% - 2mm);margin:1mm;box-sizing:border-box;height:auto}
 img.img.bgimg{opacity:.9}
 /* 层次依《书版使用指南》9.10：背景(BJ) → 边文(BW) → 正文 */
 .bglayer{position:absolute;z-index:1;pointer-events:none;left:0;top:0;

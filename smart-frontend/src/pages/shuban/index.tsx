@@ -379,7 +379,7 @@ function ShubanWorkspace() {
     name: 'file',
     action: '/api/shuban/upload',
     multiple: true,
-    accept: '.fbd,.pro,.png,.jpg,.jpeg,.gif,.webp,.svg,.tif,.tiff,.bmp,.eps,.ps',
+    accept: '.zip,.fbd,.pro,.png,.jpg,.jpeg,.gif,.webp,.svg,.tif,.tiff,.bmp,.eps,.ps',
     withCredentials: true,
     showUploadList: false,
     onChange(info) {
@@ -390,7 +390,15 @@ function ShubanWorkspace() {
         : 0);
 
       if (info.file.status === 'done') {
-        void appMessage.success(`${info.file.name} 已导入`);
+        const result = info.file.response as { files?: string[]; fbdFiles?: string[]; ignoredCount?: number } | undefined;
+        if (info.file.name.toLowerCase().endsWith('.zip')) {
+          const importedCount = result?.files?.length || 0;
+          const fbdCount = result?.fbdFiles?.length || 0;
+          const ignored = result?.ignoredCount ? `，忽略 ${result.ignoredCount} 个不支持的文件` : '';
+          void appMessage.success(`${info.file.name} 解压完成，导入 ${importedCount} 个文件（${fbdCount} 个 FBD）${ignored}`);
+        } else {
+          void appMessage.success(`${info.file.name} 已导入`);
+        }
       } else if (info.file.status === 'error') {
         const response = info.file.response as { detail?: string } | undefined;
         void appMessage.error(response?.detail || `${info.file.name} 导入失败`);
@@ -399,10 +407,16 @@ function ShubanWorkspace() {
       const allComplete = info.fileList.length > 0
         && info.fileList.every((item) => item.status === 'done' || item.status === 'error');
       if (allComplete) {
-        const lastFbd = [...info.fileList].reverse().find(
-          (item) => item.status === 'done' && item.name.toLowerCase().endsWith('.fbd'),
-        );
-        finishUpload(lastFbd?.name);
+        const lastFbd = [...info.fileList].reverse().flatMap((item) => {
+          if (item.status !== 'done') return [];
+          if (item.name.toLowerCase().endsWith('.fbd')) return [item.name];
+          if (item.name.toLowerCase().endsWith('.zip')) {
+            const result = item.response as { fbdFiles?: string[] } | undefined;
+            return result?.fbdFiles?.slice(-1) || [];
+          }
+          return [];
+        })[0];
+        finishUpload(lastFbd);
       }
     },
   };
@@ -626,7 +640,7 @@ function ShubanWorkspace() {
               <Dragger {...uploadProps} className={styles.upload}>
                 <p className="ant-upload-drag-icon"><InboxOutlined /></p>
                 <p className="ant-upload-text">拖放文件到此处，或选择文件</p>
-                <p className="ant-upload-hint">支持 .fbd、同名 .PRO 和版面图片；单个文件最大 50 MB</p>
+                <p className="ant-upload-hint">支持 .zip 压缩包、.fbd、同名 .PRO 和版面图片；单个上传文件最大 50 MB</p>
                 <div className={styles.uploadActions}>
                   <Button icon={<PlusOutlined />}>选择文件</Button>
                 </div>

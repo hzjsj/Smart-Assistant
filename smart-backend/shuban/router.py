@@ -3,11 +3,16 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
+import stat
+import tempfile
 import uuid
+import zipfile
+import zlib
 from dataclasses import asdict
 from functools import lru_cache
 from html import escape
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, Response
@@ -27,10 +32,13 @@ router = APIRouter(
 
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "uploads" / "shuban"
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+MAX_ARCHIVE_FILES = 1000
+MAX_ARCHIVE_EXPANDED_BYTES = 512 * 1024 * 1024
 ALLOWED_EXTENSIONS = {
-    ".fbd", ".pro", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
+    ".fbd", ".pro", ".zip", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg",
     ".tif", ".tiff", ".bmp", ".eps", ".ps",
 }
+ARCHIVE_FILE_EXTENSIONS = ALLOWED_EXTENSIONS - {".zip"}
 
 
 def _user_dir(user: User) -> Path:
@@ -53,6 +61,157 @@ def _safe_file(user: User, filename: str) -> Path:
     if path.parent != root or not path.is_file() or path.suffix.lower() != ".fbd":
         raise HTTPException(status_code=404, detail="FBD 文件不存在")
     return path
+
+
+def _archive_entry_name(entry: zipfile.ZipInfo) -> str:
+    """还原 Windows 中文 ZIP 常见的未标记 UTF-8（CP936/GBK）文件名。"""
+    filename = entry.filename
+    original = getattr(entry, "orig_filename", filename)
+    if entry.flag_bits & 0x800 or filename != original:
+        return filename.replace("\\", "/")
+
+    try:
+        raw_name = original.encode("cp437")
+        decoded = raw_name.decode("gb18030")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return filename.replace("\\", "/")
+
+    # 保留合法 CP437 名称；只有解码结果含中文时才采用 Windows 中文代码页。
+    if decoded != original and any("\u3400" <= char <= "\u9fff" for char in decoded):
+        return decoded.replace("\\", "/")
+    return filename.replace("\\", "/")
+
+
+def _extract_archive(archive_path: Path, root: Path, archive_size: int) -> dict:
+    try:
+        archive = zipfile.ZipFile(archive_path)
+    except (OSError, zipfile.BadZipFile) as exc:
+        raise HTTPException(status_code=400, detail="压缩包无效或已损坏") from exc
+
+    with archive:
+        entries = archive.infolist()
+        if len(entries) > MAX_ARCHIVE_FILES:
+            raise HTTPException(status_code=413, detail=f"压缩包内文件不能超过 {MAX_ARCHIVE_FILES} 个")
+
+        accepted: list[tuple[zipfile.ZipInfo, str]] = []
+        names: set[str] = set()
+        fbd_files: list[str] = []
+        expanded_size = 0
+        ignored_count = 0
+
+        for entry in entries:
+            if entry.is_dir():
+                continue
+            raw_name = _archive_entry_name(entry)
+            archive_name = PurePosixPath(raw_name)
+            if (archive_name.is_absolute() or ".." in archive_name.parts
+                    or (archive_name.parts and ":" in archive_name.parts[0])):
+                raise HTTPException(status_code=400, detail=f"压缩包包含非法路径：{entry.filename}")
+
+            parts = archive_name.parts
+            if not parts:
+                raise HTTPException(status_code=400, detail=f"压缩包内文件路径无效：{entry.filename}")
+            if any(
+                part in {"", ".", ".."}
+                or any(char in part for char in '<>:"|?*')
+                or any(ord(char) < 32 for char in part)
+                for part in parts
+            ):
+                raise HTTPException(status_code=400, detail=f"压缩包内文件路径无效：{entry.filename}")
+
+            relative_name = PurePosixPath(*parts).as_posix()
+            name = parts[-1]
+            suffix = Path(name).suffix.lower()
+            if suffix not in ARCHIVE_FILE_EXTENSIONS:
+                ignored_count += 1
+                continue
+            mode = entry.external_attr >> 16
+            if stat.S_ISLNK(mode):
+                raise HTTPException(status_code=400, detail=f"压缩包不支持符号链接：{entry.filename}")
+            if entry.flag_bits & 0x1:
+                raise HTTPException(status_code=400, detail=f"压缩包内文件已加密：{entry.filename}")
+            if entry.file_size > MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail=f"压缩包内单个文件不能超过 50 MB：{name}")
+
+            folded_name = relative_name.casefold()
+            if folded_name in names:
+                raise HTTPException(status_code=400, detail=f"压缩包内存在重复路径：{relative_name}")
+            names.add(folded_name)
+            expanded_size += entry.file_size
+            if expanded_size > MAX_ARCHIVE_EXPANDED_BYTES:
+                raise HTTPException(status_code=413, detail="压缩包解压后总大小不能超过 512 MB")
+
+            accepted.append((entry, relative_name))
+
+        # ZIP 工具常会把整个项目包在一个同名目录中；去掉这一层后，
+        # 保留项目内部图片目录，避免把素材都平铺导致注解路径失效。
+        path_parts = [PurePosixPath(name).parts for _, name in accepted]
+        strip_wrapper = bool(path_parts) and all(
+            len(parts) >= 2 and parts[0].casefold() == path_parts[0][0].casefold()
+            for parts in path_parts
+        )
+        if strip_wrapper:
+            accepted = [(entry, PurePosixPath(*PurePosixPath(name).parts[1:]).as_posix())
+                        for entry, name in accepted]
+
+        fbd_names = [name for _, name in accepted if Path(name).suffix.lower() == ".fbd"]
+        if not fbd_names:
+            raise HTTPException(status_code=400, detail="压缩包内没有可导入的 FBD 文件")
+        if any("/" in name for name in fbd_names):
+            raise HTTPException(
+                status_code=400,
+                detail="FBD 文件需位于压缩包根目录，或统一放在一个外层目录中；请将素材子目录保留在 FBD 旁边",
+            )
+        fbd_files = fbd_names
+
+        folded_paths = [name.casefold() for _, name in accepted]
+        if len(folded_paths) != len(set(folded_paths)):
+            raise HTTPException(status_code=400, detail="压缩包去除外层目录后存在重复路径")
+
+        stage = Path(tempfile.mkdtemp(prefix=".shuban-unpack-", dir=root))
+        try:
+            for entry, relative_name in accepted:
+                destination = stage.joinpath(*PurePosixPath(relative_name).parts)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                written = 0
+                with archive.open(entry) as source, destination.open("xb") as output:
+                    while chunk := source.read(1024 * 1024):
+                        written += len(chunk)
+                        if written > entry.file_size or written > MAX_UPLOAD_BYTES:
+                            raise HTTPException(status_code=400, detail=f"压缩包内文件大小异常：{relative_name}")
+                        output.write(chunk)
+                if written != entry.file_size:
+                    raise HTTPException(status_code=400, detail=f"压缩包内文件长度不匹配：{relative_name}")
+
+            imported_files: list[str] = []
+            resolved_root = root.resolve()
+            for _, relative_name in accepted:
+                source = stage.joinpath(*PurePosixPath(relative_name).parts)
+                destination = root.joinpath(*PurePosixPath(relative_name).parts)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                resolved_parent = destination.parent.resolve()
+                if resolved_parent != resolved_root and resolved_root not in resolved_parent.parents:
+                    raise HTTPException(status_code=400, detail=f"压缩包目标路径超出用户目录：{relative_name}")
+                os.replace(source, destination)
+                imported_files.append(relative_name)
+        except (zipfile.BadZipFile, RuntimeError, EOFError, NotImplementedError, zlib.error) as exc:
+            raise HTTPException(status_code=400, detail="压缩包校验失败，无法解压") from exc
+        finally:
+            shutil.rmtree(stage, ignore_errors=True)
+
+    return {
+        "success": True,
+        "name": archive_path.name,
+        "size": archive_size,
+        "files": imported_files,
+        "fbdFiles": fbd_files,
+        "preservedDirectories": sorted({
+            str(PurePosixPath(name).parent)
+            for name in imported_files
+            if str(PurePosixPath(name).parent) != "."
+        }),
+        "ignoredCount": ignored_count,
+    }
 
 
 @lru_cache(maxsize=24)
@@ -115,7 +274,10 @@ def _text_view(result: dict, plain: bool) -> str:
 def list_files(current_user: User = Depends(get_current_user)):
     root = _user_dir(current_user)
     files = []
-    for path in sorted(root.glob("*.fbd"), key=lambda item: item.name.casefold()):
+    for path in sorted(
+        (item for item in root.iterdir() if item.is_file() and item.suffix.lower() == ".fbd"),
+        key=lambda item: item.name.casefold(),
+    ):
         stat = path.stat()
         files.append({"name": path.name, "size": stat.st_size, "updatedAt": stat.st_mtime})
     return {"files": files}
@@ -129,7 +291,7 @@ async def upload_file(
     name = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
     suffix = Path(name).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="仅支持 FBD、PRO 及预览所需的图片文件")
+        raise HTTPException(status_code=400, detail="仅支持 ZIP、FBD、PRO 及预览所需的图片文件")
     if not name or name in {".", ".."}:
         raise HTTPException(status_code=400, detail="文件名无效")
 
@@ -144,12 +306,16 @@ async def upload_file(
                 if total > MAX_UPLOAD_BYTES:
                     raise HTTPException(status_code=413, detail="单个文件不能超过 50 MB")
                 output.write(chunk)
-        os.replace(temporary, destination)
+        if suffix == ".zip":
+            result = _extract_archive(temporary, root, total)
+        else:
+            os.replace(temporary, destination)
+            result = {"success": True, "name": name, "size": total}
     finally:
         await file.close()
         temporary.unlink(missing_ok=True)
     _analyze.cache_clear()
-    return {"success": True, "name": name, "size": total}
+    return result
 
 
 @router.get("/files/{filename}/report")
