@@ -1,4 +1,6 @@
 export interface ShubanFile {
+  id: string;
+  version: string;
   name: string;
   size: number;
   updatedAt: number;

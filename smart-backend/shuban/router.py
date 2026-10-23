@@ -26,11 +26,16 @@ from shuban.fbdview.layout import analyze_geometry
 from shuban.fbdview.lexer import tokenize
 from shuban.word_conversion import convert_docx
 from shuban.word_templates import get_template, list_templates
+from shuban import storage
+
+def _no_store(response: Response):
+    response.headers["Cache-Control"] = "private, no-store"
+
 
 router = APIRouter(
     prefix="/api/shuban",
     tags=["书版预览"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(get_current_user), Depends(_no_store)],
 )
 
 UPLOAD_ROOT = Path(__file__).resolve().parents[1] / "uploads" / "shuban"
@@ -58,14 +63,7 @@ def _user_dir(user: User) -> Path:
 
 
 def _safe_file(user: User, filename: str) -> Path:
-    name = filename.replace("\\", "/").rsplit("/", 1)[-1]
-    if not name or name in {".", ".."}:
-        raise HTTPException(status_code=404, detail="文件不存在")
-    root = _user_dir(user)
-    path = (root / name).resolve()
-    if path.parent != root or not path.is_file() or path.suffix.lower() != ".fbd":
-        raise HTTPException(status_code=404, detail="FBD 文件不存在")
-    return path
+    return storage.resolve(_user_dir(user), filename)[0]
 
 
 def _conversion_dir(user: User, conversion_id: str) -> Path:
@@ -252,6 +250,8 @@ def _extract_archive(archive_path: Path, root: Path, archive_size: int) -> dict:
             for _, relative_name in accepted:
                 source = stage.joinpath(*PurePosixPath(relative_name).parts)
                 destination = root.joinpath(*PurePosixPath(relative_name).parts)
+                if destination.exists():
+                    raise HTTPException(status_code=400, detail=f"本次导入存在重复文件路径：{relative_name}")
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 resolved_parent = destination.parent.resolve()
                 if resolved_parent != resolved_root and resolved_root not in resolved_parent.parents:
@@ -279,22 +279,25 @@ def _extract_archive(archive_path: Path, root: Path, archive_size: int) -> dict:
 
 
 @lru_cache(maxsize=24)
-def _analyze(path_text: str, mtime_ns: int, size: int) -> dict:
+def _analyze(path_text: str, version: str) -> dict:
     path = Path(path_text)
     decoded = read_bytes(str(path))
     lexed = tokenize(decoded)
     result = report.analyze(str(path), decoded, lexed)
-    result["_geo"] = analyze_geometry(str(path), decoded)
+    pro = next((item for item in path.parent.iterdir()
+                if item.is_file() and item.stem.casefold() == path.stem.casefold()
+                and item.suffix.lower() == ".pro"), None)
+    result["_geo"] = analyze_geometry(str(path), decoded, str(pro) if pro else None)
+    result["pro"] = {"path": str(pro) if pro else None, "exists": pro is not None}
     result["_dec"] = decoded
     result["_lex"] = lexed
     return result
 
 
 def _file_analysis(user: User, filename: str) -> tuple[Path, dict]:
-    path = _safe_file(user, filename)
-    stat = path.stat()
+    path, _, version = storage.resolve(_user_dir(user), filename)
     try:
-        return path, _analyze(str(path), stat.st_mtime_ns, stat.st_size)
+        return path, _analyze(str(path), version)
     except (OSError, UnicodeError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=f"FBD 解析失败：{exc}") from exc
 
@@ -336,15 +339,7 @@ def _text_view(result: dict, plain: bool) -> str:
 
 @router.get("/files")
 def list_files(current_user: User = Depends(get_current_user)):
-    root = _user_dir(current_user)
-    files = []
-    for path in sorted(
-        (item for item in root.iterdir() if item.is_file() and item.suffix.lower() == ".fbd"),
-        key=lambda item: item.name.casefold(),
-    ):
-        stat = path.stat()
-        files.append({"name": path.name, "size": stat.st_size, "updatedAt": stat.st_mtime})
-    return {"files": files}
+    return {"files": storage.list_documents(_user_dir(current_user))}
 
 
 @router.get("/word-templates")
@@ -410,7 +405,7 @@ def get_word_conversion_preview(conversion_id: str, current_user: User = Depends
     path = _conversion_dir(current_user, conversion_id) / "preview.html"
     if not path.is_file():
         raise HTTPException(status_code=404, detail="预览文件不存在")
-    return FileResponse(path, media_type="text/html; charset=utf-8")
+    return FileResponse(path, media_type="text/html; charset=utf-8", headers={"Cache-Control": "private, no-store"})
 
 
 @router.get("/word-conversions/{conversion_id}/download")
@@ -420,115 +415,94 @@ def download_word_conversion(conversion_id: str, current_user: User = Depends(ge
     if len(archives) != 1:
         raise HTTPException(status_code=404, detail="排版 ZIP 不存在")
     path = archives[0]
-    return FileResponse(path, media_type="application/zip", filename=path.name)
+    return FileResponse(path, media_type="application/zip", filename=path.name, headers={"Cache-Control": "private, no-store"})
 
 
 @router.post("/word-conversions/{conversion_id}/save")
 def save_word_conversion(conversion_id: str, current_user: User = Depends(get_current_user)):
     conversion_dir = _conversion_dir(current_user, conversion_id)
-    root = _user_dir(current_user)
     fbd_files = [path for path in conversion_dir.iterdir() if path.is_file() and path.suffix.lower() == ".fbd"]
     pro_files = [path for path in conversion_dir.iterdir() if path.is_file() and path.suffix.lower() == ".pro"]
     if len(fbd_files) != 1 or len(pro_files) != 1:
         raise HTTPException(status_code=500, detail="转换结果缺少唯一的 FBD 或 PRO 文件")
-
-    asset_extensions = ARCHIVE_FILE_EXTENSIONS - {".fbd", ".pro"}
-    assets = [
-        path for path in conversion_dir.iterdir()
-        if path.is_file() and path.suffix.lower() in asset_extensions
-    ]
-    files = sorted([*fbd_files, *pro_files, *assets], key=lambda path: path.name.casefold())
-    unchanged: list[str] = []
-    conflicts: list[str] = []
-    for source in files:
-        destination = root / source.name
-        if destination.exists():
-            if _same_file_contents(source, destination):
-                unchanged.append(source.name)
-            else:
-                conflicts.append(source.name)
-    if conflicts:
-        names = "、".join(conflicts[:5])
-        raise HTTPException(
-            status_code=409,
-            detail=f"文件清单中已有同名且内容不同或无法读取的文件，未保存以避免覆盖：{names}。请移走旧文件后重试。",
-        )
-
-    created: list[Path] = []
-    try:
-        for source in files:
-            if source.name in unchanged:
-                continue
-            destination = root / source.name
-            try:
-                with source.open("rb") as incoming, destination.open("xb") as saved:
-                    created.append(destination)
-                    shutil.copyfileobj(incoming, saved)
-                shutil.copystat(source, destination)
-            except FileExistsError as exc:
-                if _same_file_contents(source, destination):
-                    unchanged.append(source.name)
-                    continue
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"保存时发现同名文件：{source.name}。请移走旧文件后重试。",
-                ) from exc
-            except PermissionError as exc:
-                raise HTTPException(
-                    status_code=409,
-                    detail=f"无法写入文件：{source.name}。请关闭占用该文件的程序后重试。",
-                ) from exc
-    except Exception:
-        for path in reversed(created):
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
-        raise
-
-    _analyze.cache_clear()
+    documents, unchanged = storage.publish(
+        _user_dir(current_user), conversion_dir, fixed_ids={fbd_files[0].name: conversion_id},
+    )
+    saved_files = [path.name for path in conversion_dir.iterdir()
+                   if path.is_file() and path.suffix.lower() in ARCHIVE_FILE_EXTENSIONS]
     return {
-        "success": True,
-        "fbdFileName": fbd_files[0].name,
-        "savedFiles": [path.name for path in files],
-        "unchangedFiles": sorted(set(unchanged), key=str.casefold),
-        "unchanged": len(set(unchanged)) == len(files),
+        "success": True, "fbdFileName": fbd_files[0].name, "document": documents[0],
+        "savedFiles": saved_files, "unchangedFiles": saved_files if unchanged else [],
+        "unchanged": unchanged,
     }
+
+
+@router.post("/imports")
+async def import_files(
+    files: list[UploadFile] = File(...),
+    document_id: str | None = Form(None),
+    current_user: User = Depends(get_current_user),
+):
+    root = _user_dir(current_user)
+    stage = Path(tempfile.mkdtemp(prefix=".import-", dir=root))
+    incoming = stage / "payload"
+    incoming.mkdir()
+    ignored_count = 0
+    total_size = 0
+    try:
+        # 所选 FBD、PRO、图片与 ZIP 属于同一批次，全部接收成功后才发布。
+        for file in files:
+            name = _upload_filename(file.filename)
+            suffix = Path(name).suffix.lower()
+            if (not name or name in {".", ".."} or any(char in name for char in '<>:"|?*')
+                    or any(ord(char) < 32 for char in name) or name.endswith((".", " "))):
+                raise HTTPException(status_code=400, detail="上传文件名无效")
+            if suffix not in ALLOWED_EXTENSIONS:
+                raise HTTPException(status_code=400, detail="仅支持 ZIP、FBD、PRO 及预览所需的图片文件")
+            temporary = stage / f"{uuid.uuid4().hex}.upload"
+            written = 0
+            with temporary.open("xb") as output:
+                while chunk := await file.read(1024 * 1024):
+                    written += len(chunk)
+                    if written > MAX_UPLOAD_BYTES:
+                        raise HTTPException(status_code=413, detail="单个上传文件不能超过 500 MB")
+                    output.write(chunk)
+            if not written:
+                raise HTTPException(status_code=400, detail=f"文件为空：{name}")
+            total_size += written
+            if suffix == ".zip":
+                archive_result = await run_in_threadpool(_extract_archive, temporary, incoming, written)
+                ignored_count += archive_result["ignoredCount"]
+            else:
+                if any(item.name.casefold() == name.casefold() for item in incoming.iterdir()):
+                    raise HTTPException(status_code=400, detail=f"本次导入存在重复文件路径：{name}")
+                os.replace(temporary, incoming / name)
+        # 文件名在 Windows 和 Linux 上均按忽略大小写的路径处理。
+        paths = [path.relative_to(incoming).as_posix() for path in incoming.rglob("*") if path.is_file()]
+        if len({name.casefold() for name in paths}) != len(paths):
+            raise HTTPException(status_code=400, detail="本次导入存在重复文件路径")
+        if document_id:
+            await run_in_threadpool(storage.migrate_legacy, root)
+        documents, unchanged = await run_in_threadpool(storage.publish, root, incoming, document_id)
+        return {
+            "success": True, "documents": documents, "files": paths,
+            "fbdFiles": [item["name"] for item in documents],
+            "ignoredCount": ignored_count, "size": total_size, "unchanged": unchanged,
+        }
+    finally:
+        for file in files:
+            await file.close()
+        shutil.rmtree(stage, ignore_errors=True)
 
 
 @router.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
+    document_id: str | None = Form(None),
     current_user: User = Depends(get_current_user),
 ):
-    name = _upload_filename(file.filename)
-    suffix = Path(name).suffix.lower()
-    if suffix not in ALLOWED_EXTENSIONS:
-        raise HTTPException(status_code=400, detail="仅支持 ZIP、FBD、PRO 及预览所需的图片文件")
-    if not name or name in {".", ".."}:
-        raise HTTPException(status_code=400, detail="文件名无效")
-
-    root = _user_dir(current_user)
-    destination = root / name
-    temporary = root / f".{uuid.uuid4().hex}.upload"
-    total = 0
-    try:
-        with temporary.open("wb") as output:
-            while chunk := await file.read(1024 * 1024):
-                total += len(chunk)
-                if total > MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="单个上传文件不能超过 500 MB")
-                output.write(chunk)
-        if suffix == ".zip":
-            result = _extract_archive(temporary, root, total)
-        else:
-            changed = _replace_uploaded_file(temporary, destination, name)
-            result = {"success": True, "name": name, "size": total, "unchanged": not changed}
-    finally:
-        await file.close()
-        temporary.unlink(missing_ok=True)
-    _analyze.cache_clear()
-    return result
+    # 保留旧地址；单独导入 PRO/图片时必须明确所属文档。
+    return await import_files(files=[file], document_id=document_id, current_user=current_user)
 
 
 @router.get("/files/{filename}/report")
@@ -593,7 +567,7 @@ def get_preview(filename: str, current_user: User = Depends(get_current_user)):
     path, result = _file_analysis(current_user, filename)
     layout = render_html.preview_html(
         result["_dec"], result["_lex"], result["_geo"],
-        str(path), str(path.parent), inline=True,
+        str(path), str(path.parent), inline=True, document_key=filename,
     )
     preview = (
         '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">'
@@ -601,10 +575,10 @@ def get_preview(filename: str, current_user: User = Depends(get_current_user)):
         f'<body class="hide-bg hide-bw">{layout}</body>'
         f'<script>{render_html.JS}'
         'window.addEventListener("message",function(event){'
-        'if(event.data&&event.data.type==="shuban-print")window.print();});'
+        'if(event.source===window.parent&&event.data&&event.data.type==="shuban-print"&&window.fbdLayoutReady)window.print();});'
         '</script></html>'
     )
-    return HTMLResponse(content=preview)
+    return HTMLResponse(content=preview, headers={"Cache-Control": "private, no-store"})
 
 
 @router.get("/files/{filename}/word")

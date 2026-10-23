@@ -19,6 +19,7 @@ import {
   UndoOutlined,
   UnorderedListOutlined,
 } from '@ant-design/icons';
+import { useModel } from '@umijs/max';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Dayjs } from 'dayjs';
 import {
@@ -50,7 +51,7 @@ import {
   Upload,
 } from 'antd';
 import type { MenuProps, TableColumnsType, UploadProps } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { ShubanAst, ShubanFile, ShubanReport, ShubanToken } from './data';
 import {
@@ -62,10 +63,12 @@ import {
   getTokens,
   getWordTemplates,
   listFiles,
+  importFiles,
   saveWordConversion,
 } from './service';
 import type { WordConversionResult, WordTemplate } from './service';
 import { useStyles } from './styles';
+import { createQueryKeys } from './queryKeys';
 
 const { Sider } = Layout;
 const { Dragger } = Upload;
@@ -80,16 +83,8 @@ type FileSearchValues = {
 };
 type FileFilters = { name: string; from?: number; to?: number };
 
-const queryKeys = {
-  files: ['shuban', 'files'],
-  report: (name: string) => ['shuban', name, 'report'],
-  preview: (name: string) => ['shuban', name, 'preview'],
-  tokens: (name: string) => ['shuban', name, 'tokens'],
-  ast: (name: string) => ['shuban', name, 'ast'],
-  text: (name: string) => ['shuban', name, 'text'],
-};
-
-const perRowStorageKey = (file: string) => `smart-assistant-shuban-perrow:${file}`;
+type PreviewPhase = 'rendering' | 'ready' | 'error';
+const perRowStorageKey = (userId: string, file: string) => `smart-assistant-shuban-perrow:${userId}:${file}`;
 
 const resultLabels: Record<ResultView, string> = {
   structure: '结构',
@@ -118,34 +113,36 @@ function ResultPanel({
   activeView,
   setActiveView,
   file,
+  queryKeys,
   layoutStatus,
   previewNotes,
 }: {
   activeView: ResultView;
   setActiveView: (view: ResultView) => void;
-  file: string;
+  file: ShubanFile;
+  queryKeys: ReturnType<typeof createQueryKeys>;
   layoutStatus: string;
   previewNotes: string[];
 }) {
   const { styles } = useStyles();
   const reportQuery = useQuery({
     queryKey: queryKeys.report(file),
-    queryFn: () => getReport(file),
+    queryFn: ({ signal }) => getReport(file.id, signal),
     enabled: activeView === 'report',
   });
   const tokenQuery = useQuery({
     queryKey: queryKeys.tokens(file),
-    queryFn: () => getTokens(file),
+    queryFn: ({ signal }) => getTokens(file.id, signal),
     enabled: activeView === 'structure',
   });
   const astQuery = useQuery({
     queryKey: queryKeys.ast(file),
-    queryFn: () => getAst(file),
+    queryFn: ({ signal }) => getAst(file.id, signal),
     enabled: activeView === 'ast',
   });
   const textQuery = useQuery({
     queryKey: queryKeys.text(file),
-    queryFn: () => getText(file, true),
+    queryFn: ({ signal }) => getText(file.id, true, signal),
     enabled: activeView === 'text',
   });
 
@@ -298,14 +295,19 @@ function ReportResult({
 }
 
 export default function ShubanPage() {
-  return (
-    <App>
-      <ShubanWorkspace />
-    </App>
-  );
+  const { initialState } = useModel('@@initialState');
+  const queryClient = useQueryClient();
+  const userId = initialState?.currentUser?.userid;
+  useEffect(() => {
+    const predicate = (query: { queryKey: readonly unknown[] }) => query.queryKey[0] === 'shuban' && query.queryKey[1] !== userId;
+    void queryClient.cancelQueries({ predicate });
+    queryClient.removeQueries({ predicate });
+  }, [queryClient, userId]);
+  return <App>{userId ? <ShubanWorkspace key={userId} userId={userId} /> : <Spin />}</App>;
 }
 
-function ShubanWorkspace() {
+function ShubanWorkspace({ userId }: { userId: string }) {
+  const queryKeys = useMemo(() => createQueryKeys(userId), [userId]);
   const { styles } = useStyles();
   const { message: appMessage } = App.useApp();
   const queryClient = useQueryClient();
@@ -313,7 +315,7 @@ function ShubanWorkspace() {
   const compact = screens.md === false;
   const [collapsed, setCollapsed] = useState(false);
   const [area, setArea] = useState<Area>('import');
-  const [selectedFile, setSelectedFile] = useState<string>();
+  const [selectedDocument, setSelectedFile] = useState<ShubanFile>();
   const [showResults, setShowResults] = useState(false);
   const [resultView, setResultView] = useState<ResultView>('text');
   const [mobilePane, setMobilePane] = useState<MobilePane>('layout');
@@ -330,47 +332,65 @@ function ShubanWorkspace() {
   const [wordResult, setWordResult] = useState<WordConversionResult>();
   const [wordResultOpen, setWordResultOpen] = useState(false);
   const [layoutStatus, setLayoutStatus] = useState('');
+  const [previewPhase, setPreviewPhase] = useState<PreviewPhase>('rendering');
+  const [previewAttempt, setPreviewAttempt] = useState(0);
+  const [uploadTargetId, setUploadTargetId] = useState<string>();
+  const importController = useRef<AbortController | null>(null);
+  useEffect(() => () => importController.current?.abort(), []);
+  const onLayoutStart = useCallback(() => {
+    setPreviewPhase('rendering');
+    setLayoutStatus('正在加载字体和图片、计算行栏页坐标…');
+  }, []);
+  const onLayoutTimeout = useCallback(() => {
+    setPreviewPhase('error');
+    setLayoutStatus('排版等待超时，请重试；若仍失败，请检查字体、图片和文档大小');
+  }, []);
   const [previewNotes, setPreviewNotes] = useState<string[]>([]);
   const previewFrame = useRef<HTMLIFrameElement>(null);
 
   useEffect(() => {
     const onLayoutStatus = (event: MessageEvent<unknown>) => {
       if (event.source !== previewFrame.current?.contentWindow || !event.data || typeof event.data !== 'object') return;
-      const data = event.data as { type?: string; status?: string; notes?: unknown; file?: unknown; value?: unknown };
-      if (data.type === 'shuban-preview-notes' && Array.isArray(data.notes)) {
+      const data = event.data as { type?: string; status?: string; notes?: unknown; file?: unknown; value?: unknown; phase?: unknown; message?: unknown };
+      if (data.type === 'shuban-layout-state' && typeof data.message === 'string'
+        && (data.phase === 'rendering' || data.phase === 'ready' || data.phase === 'error')) {
+        setPreviewPhase(data.phase);
+        setLayoutStatus(data.message);
+      } else if (data.type === 'shuban-preview-notes' && Array.isArray(data.notes)) {
         setPreviewNotes(data.notes.filter((note): note is string => typeof note === 'string'));
       } else if (data.type === 'shuban-layout-status' && typeof data.status === 'string') {
         setLayoutStatus(data.status);
       } else if (data.type === 'shuban-perrow-request' && typeof data.file === 'string') {
         let value = '1';
         try {
-          value = localStorage.getItem(perRowStorageKey(data.file)) === '2' ? '2' : '1';
+          value = localStorage.getItem(perRowStorageKey(userId, data.file)) === '2' ? '2' : '1';
         } catch {}
         previewFrame.current?.contentWindow?.postMessage({ type: 'shuban-perrow-setting', file: data.file, value }, '*');
       } else if (data.type === 'shuban-perrow-change' && typeof data.file === 'string' && (data.value === '1' || data.value === '2')) {
         try {
-          localStorage.setItem(perRowStorageKey(data.file), data.value);
+          localStorage.setItem(perRowStorageKey(userId, data.file), data.value);
         } catch {}
       }
     };
     window.addEventListener('message', onLayoutStatus);
     return () => window.removeEventListener('message', onLayoutStatus);
-  }, []);
+  }, [userId]);
 
-  const filesQuery = useQuery({ queryKey: queryKeys.files, queryFn: listFiles });
+  const filesQuery = useQuery({ queryKey: queryKeys.files, queryFn: ({ signal }) => listFiles(signal) });
+  const selectedFile = filesQuery.data?.files.find((file) => file.id === selectedDocument?.id) || selectedDocument;
   const wordTemplatesQuery = useQuery({
-    queryKey: ['shuban', 'word-templates'],
+    queryKey: queryKeys.templates,
     queryFn: getWordTemplates,
     enabled: wordModalOpen,
   });
   const selectedReport = useQuery({
-    queryKey: queryKeys.report(selectedFile || ''),
-    queryFn: () => getReport(selectedFile || ''),
+    queryKey: queryKeys.report(selectedFile),
+    queryFn: ({ signal }) => getReport(selectedFile?.id || '', signal),
     enabled: Boolean(selectedFile),
   });
   const previewQuery = useQuery({
-    queryKey: queryKeys.preview(selectedFile || ''),
-    queryFn: () => getPreview(selectedFile || ''),
+    queryKey: queryKeys.preview(selectedFile),
+    queryFn: ({ signal }) => getPreview(selectedFile?.id || '', signal),
     enabled: Boolean(selectedFile) && area === 'document',
   });
 
@@ -388,8 +408,10 @@ function ShubanWorkspace() {
     });
   }, [files, fileFilters]);
 
-  const openFile = (name: string) => {
-    setSelectedFile(name);
+  const openFile = (file: ShubanFile) => {
+    setSelectedFile(file);
+    setPreviewPhase('rendering');
+    setPreviewAttempt((attempt) => attempt + 1);
     setArea('document');
     setShowResults(false);
     setResultView('text');
@@ -398,9 +420,35 @@ function ShubanWorkspace() {
     setPreviewNotes([]);
   };
 
-  const finishUpload = (filename?: string) => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.files });
-    if (filename) openFile(filename);
+  const finishUpload = async (documents: ShubanFile[] = []) => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.scope });
+    if (documents.length) openFile(documents[documents.length - 1]);
+  };
+
+  const retryPreview = () => {
+    onLayoutStart();
+    setPreviewAttempt((attempt) => attempt + 1);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.scope });
+  };
+
+  const startImport = async (files: File[]) => {
+    if (importController.current) return;
+    const controller = new AbortController();
+    importController.current = controller;
+    setUploadingCount(files.length);
+    setUploadPercent(0);
+    try {
+      const result = await importFiles(files, uploadTargetId, setUploadPercent, controller.signal);
+      if (controller.signal.aborted) return;
+      await finishUpload(result.documents);
+      setUploadTargetId(undefined);
+      void appMessage.success(`${result.documents.length} 份文档已${result.unchanged ? '存在' : '导入'}${result.ignoredCount ? `，忽略 ${result.ignoredCount} 个不支持的文件` : ''}`);
+    } catch (error) {
+      if (!controller.signal.aborted) void appMessage.error(error instanceof Error ? error.message : '导入失败');
+    } finally {
+      importController.current = null;
+      setUploadingCount(0);
+    }
   };
 
   const startWordConversion = async () => {
@@ -425,15 +473,7 @@ function ShubanWorkspace() {
     setWordSaving(true);
     try {
       const result = await saveWordConversion(wordResult.id);
-      const filename = result.fbdFileName;
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: queryKeys.files }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.preview(filename) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.report(filename) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.tokens(filename) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.ast(filename) }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.text(filename) }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.scope });
       setWordSaved(true);
       void appMessage.success(
         result.unchanged
@@ -448,58 +488,26 @@ function ShubanWorkspace() {
   };
 
   const uploadProps: UploadProps = {
-    name: 'file',
-    action: '/api/shuban/upload',
     multiple: true,
     accept: '.docx,.zip,.fbd,.pro,.png,.jpg,.jpeg,.gif,.webp,.svg,.tif,.tiff,.bmp,.eps,.ps',
-    withCredentials: true,
+    disabled: uploadingCount > 0 || wordSubmitting,
     showUploadList: false,
-    beforeUpload(file) {
-      if (file.name.toLowerCase().endsWith('.docx')) {
-        setPendingWordFile(file);
-        setWordTemplateId(undefined);
-        setWordModalOpen(true);
-        return Upload.LIST_IGNORE;
-      }
-      return true;
-    },
-    onChange(info) {
-      if (info.file.name.toLowerCase().endsWith('.docx')) return;
-      const active = info.fileList.filter((item) => item.status === 'uploading');
-      setUploadingCount(active.length);
-      setUploadPercent(active.length
-        ? Math.round(active.reduce((sum, item) => sum + (item.percent || 0), 0) / active.length)
-        : 0);
-
-      if (info.file.status === 'done') {
-        const result = info.file.response as { files?: string[]; fbdFiles?: string[]; ignoredCount?: number } | undefined;
-        if (info.file.name.toLowerCase().endsWith('.zip')) {
-          const importedCount = result?.files?.length || 0;
-          const fbdCount = result?.fbdFiles?.length || 0;
-          const ignored = result?.ignoredCount ? `，忽略 ${result.ignoredCount} 个不支持的文件` : '';
-          void appMessage.success(`${info.file.name} 解压完成，导入 ${importedCount} 个文件（${fbdCount} 个 FBD）${ignored}`);
+    beforeUpload(file, fileList) {
+      // antd 对每个文件调用一次；将同一次选择统一提交，配套素材不会先于 FBD 发布。
+      if (file.uid !== fileList[0]?.uid) return Upload.LIST_IGNORE;
+      const wordFiles = fileList.filter((item) => item.name.toLowerCase().endsWith('.docx'));
+      if (wordFiles.length) {
+        if (fileList.length !== 1) {
+          void appMessage.warning('Word 排版请一次选择一份 DOCX；FBD 与配套素材可一起选择');
         } else {
-          void appMessage.success(`${info.file.name} 已导入`);
+          setPendingWordFile(wordFiles[0]);
+          setWordTemplateId(undefined);
+          setWordModalOpen(true);
         }
-      } else if (info.file.status === 'error') {
-        const response = info.file.response as { detail?: string } | undefined;
-        void appMessage.error(response?.detail || `${info.file.name} 导入失败`);
+      } else {
+        void startImport(fileList);
       }
-
-      const allComplete = info.fileList.length > 0
-        && info.fileList.every((item) => item.status === 'done' || item.status === 'error');
-      if (allComplete) {
-        const lastFbd = [...info.fileList].reverse().flatMap((item) => {
-          if (item.status !== 'done') return [];
-          if (item.name.toLowerCase().endsWith('.fbd')) return [item.name];
-          if (item.name.toLowerCase().endsWith('.zip')) {
-            const result = item.response as { fbdFiles?: string[] } | undefined;
-            return result?.fbdFiles?.slice(-1) || [];
-          }
-          return [];
-        })[0];
-        finishUpload(lastFbd);
-      }
+      return Upload.LIST_IGNORE;
     },
   };
 
@@ -519,8 +527,8 @@ function ShubanWorkspace() {
     {
       title: '文件名称',
       dataIndex: 'name',
-      render: (name: string) => (
-        <Button type="link" className={styles.fileNameButton} onClick={() => openFile(name)}>
+      render: (name: string, item) => (
+        <Button type="link" className={styles.fileNameButton} onClick={() => openFile(item)}>
           <FileTextOutlined />
           <span className={styles.fileNameText}>{name}</span>
         </Button>
@@ -541,7 +549,7 @@ function ShubanWorkspace() {
       align: 'right',
       render: (_, item) => (
         <Tooltip title="打开预览">
-          <Button type="text" icon={<FileSearchOutlined />} aria-label={`打开 ${item.name}`} onClick={() => openFile(item.name)} />
+          <Button type="text" icon={<FileSearchOutlined />} aria-label={`打开 ${item.name}`} onClick={() => openFile(item)} />
         </Tooltip>
       ),
     },
@@ -598,11 +606,11 @@ function ShubanWorkspace() {
             <div className={styles.recentList}>
               {recentFiles.length ? recentFiles.map((item) => (
                 <button
-                  key={item.name}
+                  key={item.id}
                   type="button"
                   className={styles.recentItem}
-                  aria-current={selectedFile === item.name ? 'page' : undefined}
-                  onClick={() => openFile(item.name)}
+                  aria-current={selectedFile?.id === item.id ? 'page' : undefined}
+                  onClick={() => openFile(item)}
                   title={item.name}
                 >
                   <FileTextOutlined />
@@ -632,7 +640,7 @@ function ShubanWorkspace() {
                 <Tooltip title="返回文件清单">
                   <Button type="text" icon={<ArrowLeftOutlined />} aria-label="返回文件清单" onClick={() => setArea('files')} />
                 </Tooltip>
-                <Text className={styles.currentFileName} strong ellipsis title={selectedFile}>{selectedFile}</Text>
+                <Text className={styles.currentFileName} strong ellipsis title={selectedFile.name}>{selectedFile.name}</Text>
                 {selectedReport.data?.warnings.length ? (
                   <Popover
                     trigger="click"
@@ -674,7 +682,7 @@ function ShubanWorkspace() {
                     type="text"
                     icon={<PrinterOutlined />}
                     aria-label="打印或另存为 PDF"
-                    disabled={!previewQuery.data}
+                    disabled={!previewQuery.data || previewQuery.isFetching || previewPhase !== 'ready'}
                     onClick={() => previewFrame.current?.contentWindow?.postMessage({ type: 'shuban-print' }, '*')}
                   />
                 </Tooltip>
@@ -683,7 +691,7 @@ function ShubanWorkspace() {
                     type="text"
                     icon={<DownloadOutlined />}
                     aria-label="导出 Word"
-                    href={`/api/shuban/files/${encodeURIComponent(selectedFile)}/word`}
+                    href={`/api/shuban/files/${encodeURIComponent(selectedFile.id)}/word`}
                   />
                 </Tooltip>
                 <Tooltip title="刷新文件与报告">
@@ -692,8 +700,7 @@ function ShubanWorkspace() {
                     icon={<ReloadOutlined />}
                     aria-label="刷新文件与报告"
                     onClick={() => {
-                      void queryClient.invalidateQueries({ queryKey: queryKeys.preview(selectedFile) });
-                      void queryClient.invalidateQueries({ queryKey: queryKeys.report(selectedFile) });
+                      retryPreview();
                     }}
                   />
                 </Tooltip>
@@ -719,10 +726,22 @@ function ShubanWorkspace() {
                 <h1>新建预览</h1>
                 <p>导入方正书版小样及配套文件，生成结构检查和浏览器近似排版。</p>
               </div>
+              <Form layout="vertical">
+                <Form.Item label="导入方式">
+                  <Select
+                    allowClear
+                    value={uploadTargetId}
+                    placeholder="新建独立文档（同名文件可以并存）"
+                    options={files.map((file) => ({ value: file.id, label: `更新：${file.name}（${file.id.slice(0, 6)}）` }))}
+                    onChange={setUploadTargetId}
+                    disabled={uploadingCount > 0}
+                  />
+                </Form.Item>
+              </Form>
               <Dragger {...uploadProps} className={styles.upload}>
                 <p className="ant-upload-drag-icon"><InboxOutlined /></p>
                 <p className="ant-upload-text">拖放文件到此处，或选择文件</p>
-                <p className="ant-upload-hint">支持 .docx 按模板转 FBD、.zip 压缩包、.fbd、同名 .PRO 和版面图片；单个上传文件最大 500 MB</p>
+                <p className="ant-upload-hint">支持 .docx 按模板转 FBD、.zip 压缩包、.fbd、同名 .PRO 和版面图片；单个上传文件最大 500 MB。FBD 与配套文件可一并选择；只补充 PRO 或图片时，请先选择要更新的文档。</p>
                 <div className={styles.uploadActions}>
                   <Button icon={<PlusOutlined />}>选择文件</Button>
                 </div>
@@ -814,12 +833,12 @@ function ShubanWorkspace() {
                 </div>
                 <div className={styles.fileTable}>
                   <Table<ShubanFile>
-                    rowKey="name"
+                    rowKey="id"
                     size="middle"
                     loading={filesQuery.isLoading || filesQuery.isFetching}
                     dataSource={filteredFiles}
                     columns={tableColumns}
-                    onRow={(record) => ({ onDoubleClick: () => openFile(record.name) })}
+                    onRow={(record) => ({ onDoubleClick: () => openFile(record) })}
                     pagination={{ pageSize: 12, showSizeChanger: true, showTotal: (total) => `共 ${total} 个文件` }}
                     locale={{
                       emptyText: <Empty description={fileFilters.name || fileFilters.from || fileFilters.to ? '没有匹配的文件' : '暂无 FBD 文件'} />,
@@ -853,20 +872,32 @@ function ShubanWorkspace() {
                 {!showResults ? (
                   <PreviewPane
                     file={selectedFile}
-                    loading={previewQuery.isLoading}
+                    loading={previewQuery.isFetching}
                     preview={previewQuery.data}
                     error={previewQuery.error?.message}
                     frameRef={previewFrame}
-                  />
+                    phase={previewPhase}
+                    status={layoutStatus}
+                    attempt={previewAttempt}
+                    onStart={onLayoutStart}
+                    onTimeout={onLayoutTimeout}
+                    onRetry={retryPreview}
+                    />
                 ) : compact ? (
                   mobilePane === 'layout' ? (
                     <PreviewPane
                       file={selectedFile}
-                      loading={previewQuery.isLoading}
+                      loading={previewQuery.isFetching}
                       preview={previewQuery.data}
                       error={previewQuery.error?.message}
                       frameRef={previewFrame}
-                    />
+                      phase={previewPhase}
+                      status={layoutStatus}
+                      attempt={previewAttempt}
+                      onStart={onLayoutStart}
+                      onTimeout={onLayoutTimeout}
+                      onRetry={retryPreview}
+                      />
                   ) : (
                     <div className={styles.pane}>
                       <ResultPanel
@@ -876,6 +907,7 @@ function ShubanWorkspace() {
                           if (compact) setMobilePane(view);
                         }}
                         file={selectedFile}
+                        queryKeys={queryKeys}
                         layoutStatus={layoutStatus}
                         previewNotes={previewNotes}
                       />
@@ -886,11 +918,17 @@ function ShubanWorkspace() {
                     <Splitter.Panel defaultSize="55%" min="34%" max="72%">
                       <PreviewPane
                         file={selectedFile}
-                        loading={previewQuery.isLoading}
+                        loading={previewQuery.isFetching}
                         preview={previewQuery.data}
                         error={previewQuery.error?.message}
                         frameRef={previewFrame}
-                      />
+                        phase={previewPhase}
+                        status={layoutStatus}
+                        attempt={previewAttempt}
+                        onStart={onLayoutStart}
+                        onTimeout={onLayoutTimeout}
+                        onRetry={retryPreview}
+                        />
                     </Splitter.Panel>
                     <Splitter.Panel defaultSize="45%" min="28%">
                       <div className={styles.pane}>
@@ -898,6 +936,7 @@ function ShubanWorkspace() {
                           activeView={resultView}
                           setActiveView={setResultView}
                           file={selectedFile}
+                          queryKeys={queryKeys}
                           layoutStatus={layoutStatus}
                           previewNotes={previewNotes}
                         />
@@ -1013,33 +1052,53 @@ function ShubanWorkspace() {
 }
 
 function PreviewPane({
-  file,
-  loading,
-  preview,
-  error,
-  frameRef,
+  file, loading, preview, error, frameRef, phase, status, attempt, onStart, onTimeout, onRetry,
 }: {
-  file: string;
+  file: ShubanFile;
   loading: boolean;
   preview?: string;
   error?: string;
   frameRef: RefObject<HTMLIFrameElement | null>;
+  phase: PreviewPhase;
+  status: string;
+  attempt: number;
+  onStart: () => void;
+  onTimeout: () => void;
+  onRetry: () => void;
 }) {
   const { styles } = useStyles();
+  useLayoutEffect(() => {
+    onStart();
+  }, [file.id, file.version, attempt, preview, loading, onStart]);
+  useEffect(() => {
+    if (loading || !preview || phase !== 'rendering') return;
+    const timer = window.setTimeout(onTimeout, 90000);
+    return () => window.clearTimeout(timer);
+  }, [loading, preview, phase, onTimeout]);
+  const failed = error || (phase === 'error' ? status : undefined);
   return (
     <div className={styles.pane}>
       <div className={styles.paneBody}>
-        {loading ? (
-          <div className={styles.loading}><Spin description="正在排版…" /></div>
-        ) : preview ? (
+        {!loading && preview && (
           <iframe
+            key={`${file.id}:${file.version}:${attempt}`}
             ref={frameRef}
-            title={`${file} 近似版面`}
+            title={`${file.name} 近似版面`}
             className={styles.previewFrame}
             sandbox="allow-scripts allow-modals"
             srcDoc={preview}
           />
-        ) : <Empty description={error || '版面预览暂不可用'} />}
+        )}
+        {failed ? (
+          <div className={styles.previewOverlay}>
+            <Alert type="error" showIcon title="预览失败" description={failed} />
+            <Button aria-label="重新加载" icon={<ReloadOutlined />} onClick={onRetry}>重新加载</Button>
+          </div>
+        ) : loading || (preview && phase !== 'ready') ? (
+          <div className={styles.previewOverlay} role="status">
+            <Spin description={loading ? '正在读取文档…' : '正在加载字体、图片并排版…'} />
+          </div>
+        ) : !preview ? <Empty description="版面预览暂不可用" /> : null}
       </div>
     </div>
   );

@@ -8,6 +8,15 @@ async function paginatePreview() {
   const pages = document.getElementById('measured-pages');
   if (!source || !template || !pages) return;
   const status = document.getElementById('layout-status');
+  const generation = (window.fbdLayoutGeneration || 0) + 1;
+  window.fbdLayoutGeneration = generation;
+  window.fbdLayoutReady = false;
+  const notify = (phase, message) => {
+    if (window.fbdLayoutGeneration !== generation) return;
+    window.parent.postMessage({type:'shuban-layout-state', phase, message}, '*');
+  };
+  notify('rendering', '正在加载字体和图片、计算行栏页坐标…');
+  try {
   const config = JSON.parse(document.getElementById('layout-config').textContent);
   if (window.parent !== window && Array.isArray(config.previewNotes)) {
     window.parent.postMessage({type:'shuban-preview-notes', notes:config.previewNotes}, '*');
@@ -30,7 +39,6 @@ async function paginatePreview() {
   window.fbdLayout = {version: 1, units: 'mm', pages: [], fonts: [], warnings: issues,
                       context: config.context, origin: 'text-area top-left', margins:config.margins,
                       measurement: 'browser Range / loaded local fonts'};
-  try {
     if (source.textContent.length !== config.expectedCharacters)
       throw Error('HTML 结构改变了正文容器：预期 '+config.expectedCharacters+' 字符，实际 '+source.textContent.length+' 字符');
     // FontFace local() actually verifies existence; document.fonts.check() alone
@@ -69,6 +77,7 @@ async function paginatePreview() {
       im.complete ? Promise.resolve() : new Promise(resolve => {
         im.addEventListener('load', resolve, {once:true}); im.addEventListener('error', resolve, {once:true});
       })));
+    if (window.fbdLayoutGeneration !== generation) return;
     source.querySelectorAll('img').forEach(im => { if (!im.naturalWidth) issues.push('图片加载失败：' + im.alt); });
     source.querySelectorAll('.shade-directive').forEach(el => {
       const box = el.closest('.fkbox');
@@ -237,7 +246,10 @@ async function paginatePreview() {
         } else { flush(); active = {text:char, rect}; }
       }
       flush();
-      if (ni % 500 === 0) await new Promise(resolve => requestAnimationFrame(resolve));
+      if (ni % 500 === 0) {
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        if (window.fbdLayoutGeneration !== generation) return;
+      }
     }
     // Material before the first FL can contain whole pages, not just a banner.
     // Let full-width columns paginate it, keeping SX overlays in one column.
@@ -547,11 +559,15 @@ async function paginatePreview() {
     }
     source.style.visibility = 'hidden';
     window.fbdLayoutReady = true;
+    window.fbdLayoutError = undefined;
     setZoom(1);
     window.dispatchEvent(new Event('fbdlayoutdone'));   // render_html JS 据此做自动铺满
+    notify('ready', status.textContent);
   } catch (error) {
+    if (window.fbdLayoutGeneration !== generation) return;
     status.textContent = '布局计算失败：' + error.message;
     window.fbdLayoutError = error.message;
+    notify('error', status.textContent);
   }
 }
 

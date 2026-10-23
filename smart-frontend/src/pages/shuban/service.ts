@@ -28,6 +28,7 @@ export type WordConversionResult = {
 };
 
 export type SaveWordConversionResult = {
+  document: ShubanFile;
   success: boolean;
   fbdFileName: string;
   savedFiles: string[];
@@ -50,35 +51,45 @@ async function withErrorDetail<T>(task: () => Promise<T>): Promise<T> {
   }
 }
 
-export async function listFiles(): Promise<{ files: ShubanFile[] }> {
+export type ImportResult = {
+  documents: ShubanFile[];
+  files: string[];
+  ignoredCount: number;
+  unchanged: boolean;
+};
+
+export async function listFiles(signal?: AbortSignal): Promise<{ files: ShubanFile[] }> {
   return withErrorDetail(() =>
-    request(`${API_BASE}/files`, { method: 'GET', skipErrorHandler: true }),
+    request(`${API_BASE}/files`, { method: 'GET', skipErrorHandler: true, signal }),
   );
 }
 
-export async function getReport(filename: string): Promise<ShubanReport> {
+export async function getReport(filename: string, signal?: AbortSignal): Promise<ShubanReport> {
   return withErrorDetail(() =>
     request(`${API_BASE}/files/${encodeURIComponent(filename)}/report`, {
       method: 'GET',
       skipErrorHandler: true,
+      signal,
     }),
   );
 }
 
-export async function getTokens(filename: string): Promise<ShubanToken[]> {
+export async function getTokens(filename: string, signal?: AbortSignal): Promise<ShubanToken[]> {
   return withErrorDetail(() =>
     request(`${API_BASE}/files/${encodeURIComponent(filename)}/tokens`, {
       method: 'GET',
       skipErrorHandler: true,
+      signal,
     }),
   );
 }
 
-export async function getAst(filename: string): Promise<ShubanAst> {
+export async function getAst(filename: string, signal?: AbortSignal): Promise<ShubanAst> {
   return withErrorDetail(() =>
     request(`${API_BASE}/files/${encodeURIComponent(filename)}/ast`, {
       method: 'GET',
       skipErrorHandler: true,
+      signal,
     }),
   );
 }
@@ -86,21 +97,23 @@ export async function getAst(filename: string): Promise<ShubanAst> {
 export async function getText(
   filename: string,
   plain = false,
+  signal?: AbortSignal,
 ): Promise<{ text: string }> {
   return withErrorDetail(() =>
     request(`${API_BASE}/files/${encodeURIComponent(filename)}/text`, {
       method: 'GET',
       params: { plain },
       skipErrorHandler: true,
+      signal,
     }),
   );
 }
 
-export async function getPreview(filename: string): Promise<string> {
+export async function getPreview(filename: string, signal?: AbortSignal): Promise<string> {
   return withErrorDetail(async () => {
     const response = await fetch(
       `${API_BASE}/files/${encodeURIComponent(filename)}/preview`,
-      { credentials: 'same-origin' },
+      { credentials: 'same-origin', cache: 'no-store', signal },
     );
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as { detail?: string };
@@ -108,6 +121,39 @@ export async function getPreview(filename: string): Promise<string> {
     }
     return response.text();
   });
+}
+
+export async function importFiles(
+  files: File[],
+  documentId: string | undefined,
+  onProgress: (percent: number) => void,
+  signal: AbortSignal,
+): Promise<ImportResult> {
+  return withErrorDetail(() => new Promise<ImportResult>((resolve, reject) => {
+    const form = new FormData();
+    files.forEach((file) => { form.append('files', file); });
+    if (documentId) form.append('document_id', documentId);
+    const xhr = new XMLHttpRequest();
+    const abort = () => xhr.abort();
+    xhr.open('POST', `${API_BASE}/imports`);
+    xhr.withCredentials = true;
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress(Math.round(event.loaded * 100 / event.total));
+    };
+    xhr.onload = () => {
+      try {
+        const payload = JSON.parse(xhr.responseText);
+        if (xhr.status < 200 || xhr.status >= 300) throw new Error(payload.detail || '导入失败');
+        resolve(payload);
+      } catch (error) { reject(error); }
+    };
+    xhr.onerror = () => reject(new Error('上传连接失败，请检查网络后重试'));
+    xhr.onabort = () => reject(new DOMException('上传已取消', 'AbortError'));
+    xhr.onloadend = () => signal.removeEventListener('abort', abort);
+    if (signal.aborted) { reject(new DOMException('上传已取消', 'AbortError')); return; }
+    signal.addEventListener('abort', abort, { once: true });
+    xhr.send(form);
+  }));
 }
 
 export async function getWordTemplates(): Promise<{ templates: WordTemplate[] }> {

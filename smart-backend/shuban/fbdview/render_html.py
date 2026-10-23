@@ -15,6 +15,7 @@ import os
 import re
 import json
 import struct
+from functools import lru_cache
 from urllib.parse import quote
 
 from . import report as report_mod
@@ -170,23 +171,25 @@ import threading as _threading
 _EPS_SEM = _threading.Semaphore(3)
 
 
-_IMG_INDEX: dict[str, list[str]] = {}
-_IMG_INDEX_STATE = {"root": None, "t": 0.0}
-
-
 def _image_index(root: str | None) -> dict[str, list[str]]:
-    """全工程图片名索引（小写文件名 → 路径列表），带 60 秒缓存。
-
-    小样常被复制到独立文件夹（如交付目录），而图片仍在原书目录里，
-    仅靠向上找父目录会漏，因此再建立一次全局索引兜底。
-    """
-    import time as _time
+    """文档内图片索引；缓存按目录和素材版本隔离，结果不共享可变字典。"""
     if not root:
         return {}
-    now = _time.time()
-    if (_IMG_INDEX_STATE["root"] == root and _IMG_INDEX
-            and now - _IMG_INDEX_STATE["t"] < 60):
-        return _IMG_INDEX
+    signature = []
+    for dp, _dns, fns in os.walk(root):
+        for fn in sorted(fns):
+            path = os.path.join(dp, fn)
+            if os.path.splitext(fn)[1].lower() in _IMG_RASTER + _IMG_CONVERT + (".eps",):
+                try:
+                    stat = os.stat(path)
+                    signature.append((path, stat.st_mtime_ns, stat.st_size))
+                except OSError:
+                    pass
+    return _cached_image_index(os.path.realpath(root), tuple(sorted(signature)))
+
+
+@lru_cache(maxsize=64)
+def _cached_image_index(root: str, signature: tuple) -> dict[str, list[str]]:
     idx: dict[str, list[str]] = {}
     exts = _IMG_RASTER + _IMG_CONVERT + (".eps",)
     for dp, _dns, fns in os.walk(root):
@@ -203,10 +206,7 @@ def _image_index(root: str | None) -> dict[str, list[str]]:
                 for name in names:
                     idx.setdefault(name.lower(), []).append(path)
                     idx.setdefault(re.sub(r"\s+", "", name.lower()), []).append(path)
-    _IMG_INDEX.clear()
-    _IMG_INDEX.update(idx)
-    _IMG_INDEX_STATE.update(root=root, t=now)
-    return _IMG_INDEX
+    return idx
 
 
 def _shared_prefix_len(a: str, b: str) -> int:
@@ -1838,7 +1838,8 @@ def line_end_coverage(fbd_path: str, dec=None) -> float:
     直接看原始字节（dec.text 里控制符是私有区占位符，不便判定）。
     """
     try:
-        raw = open(fbd_path, "rb").read()
+        with open(fbd_path, "rb") as source:
+            raw = source.read()
     except OSError:
         return 0.0
     lines = [ln for ln in raw.split(b"\r\n") if ln.strip()]
@@ -1886,7 +1887,7 @@ def ext_font_usage(lex) -> dict[str, int]:
 
 
 def preview_html(dec, lex, geo: Geometry, fbd_path: str = "", root: str | None = None,
-                 inline: bool = False) -> str:
+                 inline: bool = False, document_key: str | None = None) -> str:
     defs = build_defs(lex.tokens)
     context_for_defs = load_context(fbd_path, geo.pro_path) if fbd_path else None
     if context_for_defs:
@@ -1992,7 +1993,7 @@ def preview_html(dec, lex, geo: Geometry, fbd_path: str = "", root: str | None =
                          'aliases':context.aliases if context else {}}, 'warnings':warnings}
     config['previewNotes'] = preview_notes
     config['margins'] = {'top':m_t,'bottom':m_b,'left':m_l,'right':m_r}
-    config['file'] = fbd_path
+    config['file'] = document_key or fbd_path
     # Preview numbering policy for this corpus: paired WM inside the initial
     # directory block corresponds to an unnumbered directory in the supplied PDF.
     # This is an explicit preview policy, not an undocumented WM interpretation.

@@ -410,6 +410,7 @@ export const useStyles = createStyles(({ token, css }) => ({
     background: ${token.colorBgContainer};
   `,
   paneBody: css`
+    position: relative;
     min-height: 0;
     flex: 1;
     overflow: auto;
@@ -421,6 +422,18 @@ export const useStyles = createStyles(({ token, css }) => ({
     min-height: 320px;
     border: 0;
     background: ${token.colorBgLayout};
+  `,
+  previewOverlay: css`
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 24px;
+    background: ${token.colorBgContainer};
   `,
   resultTabs: css`
     display: flex;

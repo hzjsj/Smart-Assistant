@@ -8,7 +8,7 @@
 
 ### FBD、配套文件和 ZIP
 
-普通文件走 `POST /api/shuban/upload`，保存到 `smart-backend/uploads/shuban/{userid}/`。支持：
+前端将同一次选择的 FBD、PRO、图片和 ZIP 通过 `POST /api/shuban/imports` 的 multipart `files` 字段整体提交。可选 `document_id` 表示更新已有文档；未指定时创建独立文档，同名 FBD 可以并存。旧 `POST /api/shuban/upload` 地址仍接收单个 `file`，并复用整批导入逻辑。支持：
 
 - `.fbd`、`.pro`、`.zip`
 - `.png`、`.jpg`、`.jpeg`、`.gif`、`.webp`、`.svg`、`.tif`、`.tiff`、`.bmp`、`.eps`、`.ps`
@@ -17,7 +17,11 @@
 
 FBD 文件须位于 ZIP 根目录。若所有条目统一放在一个外层目录，服务会去掉该层；FBD 旁边的图片子目录会保留。去掉外层目录后仍嵌套在子目录中的 FBD 会被拒绝。图片目录和图片相对路径应按 FBD 注解实际引用关系组织。
 
-导入后，`GET /api/shuban/files` 返回当前用户根目录中的 FBD 清单。选中文件后，前端调用 `/files/{filename}/report`、`/tokens`、`/ast`、`/text` 和 `/preview` 获取结构报告、注解、语法树、文本及 HTML 近似预览；`/word` 可导出 Word。所有接口使用当前用户会话，文件按用户目录隔离。
+每份文档位于 `smart-backend/uploads/shuban/{userid}/documents/{documentId}/{versionDirectory}/`，保留 FBD、PRO 和素材的原始文件名及相对目录。`catalog.json` 记录文档 ID、文件名、内容摘要和当前版本目录。导入先在不可见目录准备全部文件版本，最后原子替换清单；准备或发布失败会回收本次生成的版本目录，清单仍指向旧版。线程锁和操作系统文件锁覆盖并发导入。单独补充 PRO/图片时必须明确选中所属文档。
+
+`GET /api/shuban/files` 返回 `id`、`name`、`size`、`updatedAt`、`version`。前端使用 ID 调用 `/files/{documentId}/report`、`/tokens`、`/ast`、`/text` 和 `/preview`；`/word` 可导出 Word。旧文件名地址仅在同名文档唯一时兼容，重名时返回 409。历史用户根目录中的 FBD 在首次读取清单时复制为独立文档快照，原文件保留；后续更新应走文档 ID，不再直接修改旧根目录文件。
+
+版本标识涵盖 FBD、PRO 和素材文件。后端分析缓存按实际版本目录和版本标识读取，图片索引缓存按文档目录及素材状态隔离。前端 React Query key 包含账号、文档 ID、版本和资源类型；整批上传、保存和刷新统一失效当前账号的书版缓存，退出账号时取消请求并清理缓存。iframe 通过 `shuban-layout-state` 回报 `rendering`、`ready`、`error`；主页面区分请求读取与排版计算，只有 `ready` 时允许打印，失败或超时展示重试。
 
 ### Word 转 FBD
 
@@ -27,7 +31,7 @@ FBD 文件须位于 ZIP 根目录。若所有条目统一放在一个外层目�
 
 成功响应包含 `fileName`、`templateName`、`contentVerified`、`warnings`、`geometry`、`previewUrl` 和 `downloadUrl`。FBD/PRO 的文件名主体采用上传 DOCX 的安全化文件名主体；下载 ZIP 也以同一主体命名。前端展示转换告警和内容核对状态，并提供打开预览、保存排版和下载 ZIP 的操作。预览、ZIP 和保存操作分别通过 `GET /api/shuban/word-conversions/{id}/preview`、`GET /api/shuban/word-conversions/{id}/download` 与 `POST /api/shuban/word-conversions/{id}/save` 完成。
 
-“保存排版”会把转换结果中的 FBD、配套 PRO 和图片/EPS 素材复制到当前用户的 Shuban 根目录，使 FBD 出现在文件清单并可用常规预览 API 打开。同名且内容相同的文件按已保存处理；同名但内容不同的文件不会被覆盖，返回冲突提示。保存完成后应失效前端文件列表缓存。
+“保存排版”会把转换结果中的 FBD、配套 PRO 和图片/EPS 素材发布为独立文档，返回 `document` 元数据。同一次转换使用固定文档 ID，重复保存按已保存处理；不同转换即使原始文件名相同也互相隔离。保存完成后统一刷新当前账号的文件清单及文档缓存。Word 转换目录和已发布的历史版本暂不自动删除。
 
 ## 可选模板
 
@@ -64,9 +68,12 @@ FBD 文件须位于 ZIP 根目录。若所有条目统一放在一个外层目�
 ## 维护入口
 
 - `router.py`：普通 FBD/ZIP 上传、Word 模板与转换 API、预览和 ZIP 下载。
+- `storage.py`：文档 ID、不可变版本、原子清单、历史文件快照与并发导入锁。
 - `word_templates.py`：模板登记和模板元数据。
 - `word_conversion.py`：DOCX 安全校验、子进程执行、FBD 结构检查、预览生成和结果打包。
 - `tools/docx_to_series_fbd.py`：Word/XML 解析、样式/公式/表格/图片映射与 FBD 生成。
 - `tools/fbdgen.py`：GBK/控制符编码、FBD 校验和预览辅助。
 - `smart-frontend/src/pages/shuban/service.ts`：Word 模板与转换 API 客户端。
 - `smart-frontend/src/pages/shuban/index.tsx`：文件选择、模板弹窗、结果预览、告警和 ZIP 下载交互。
+- `tests/test_storage.py`：独立文档、版本更新、整批回滚、账号归属与历史兼容回归检查。后端目录执行 `.venv/Scripts/python -m unittest discover -s shuban/tests -v`。
+- `tests/check_preview.cjs`：真实浏览器验证 sandbox iframe 首次排版、错误回传和重试。通过 `FBD_PLAYWRIGHT` 指定 Playwright 包路径，`FBD_TEST_PYTHON` 和 `FBD_TEST_BROWSER` 可指定解释器和浏览器。
