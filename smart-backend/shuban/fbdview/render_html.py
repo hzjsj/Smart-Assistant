@@ -1509,6 +1509,10 @@ class PreviewRenderer:
         up_attr = f' style="margin-top:{up_h:g}mm"' if up_h else ""
         math_group = "Cambria Math" in up or "Cambria Math" in down
         box_class = "sxbox sxmath" if math_group else "sxbox"
+        if self._looks_like_math_fraction(up, down):
+            box_class += " sxfrac"
+            note = "数学分式：按分数线和上下内容近似显示"
+            tip = f"上下注解 〖SX{st['raw']}〗：{note}（预览近似，最终以书版发排为准）"
         self._emit(
             ('<div class="alignline" style="text-align:center">' if st.get('center') else '') +
             f'<span class="{box_class}" title="{html.escape(tip, quote=True)}">'
@@ -1519,6 +1523,34 @@ class PreviewRenderer:
     def _cur_list(self) -> list:
         """当前输出目标是哪个列表（与 _emit 一致）。"""
         return self._target_list()
+
+    @staticmethod
+    def _looks_like_math_fraction(up: str, down: str) -> bool:
+        """区分 OMML 分式与 SX 通用图题/下方标注。
+
+        FBD 的 SX 是通用上下结构，Word 分式转换后没有专用标记。预览只在
+        数学字体、无图片、上下均可见且字号一致时按分式显示，避免把图片
+        图题或 Word 下方分组标注误画成分数线。
+        """
+        if "Cambria Math" not in up or "Cambria Math" not in down:
+            return False
+        if "<img" in up or "<img" in down or "<br" in up or "<br" in down:
+            return False
+
+        def visible(html_text: str) -> bool:
+            return bool(re.sub(r"<[^>]*>", "", html_text).strip())
+
+        if not visible(up) or not visible(down):
+            return False
+
+        def max_font(html_text: str) -> float:
+            return max((float(value) for value in
+                        re.findall(r"font-size:([\d.]+)pt", html_text)), default=0.0)
+
+        up_size, down_size = max_font(up), max_font(down)
+        if up_size <= 0 or down_size <= 0:
+            return False
+        return abs(up_size - down_size) < 0.05
 
     # ---- 状态式居右（〖JY。…〗）：按“行”收尾 ----
     def _jy_open(self) -> None:
@@ -2378,6 +2410,9 @@ ul.warn{margin:0;padding-left:18px;font-size:12px;color:var(--text-2)}
 .sxbox.sxmath{box-sizing:border-box;padding:0 .16em .75em}
 .sxbox .sxup{display:block}
 .sxbox .sxdn{display:block;position:absolute;left:0;right:0;z-index:1}
+.sxbox.sxfrac{padding:0 .14em;vertical-align:middle}
+.sxbox.sxfrac .sxup{padding:0 .12em .08em;border-bottom:1px solid currentColor}
+.sxbox.sxfrac .sxdn{position:static;padding:.08em .12em 0}
 .bgbox{border:1px dashed #bbb;padding:2px 4px;margin:2px 0}
 .imgph{display:inline-block;border:1px dashed #7a8b9c;background:#f4f8fc;color:#3d5a75;
   padding:3px 6px;margin:1mm;max-width:calc(100% - 2mm);box-sizing:border-box;font-size:11px;border-radius:4px;text-align:center;vertical-align:middle}
@@ -2441,33 +2476,44 @@ var select=document.getElementById('zoom-choice');if(select){
 }
 function setZoomChoice(value){if(value==='fit'){window.fbdFitZoom=true;fitWidth();}
  else{window.fbdFitZoom=false;setZoom(Number(value)/100);}}
+function pageStorageKey(file){return 'fbd-page:'+file;}
+function saveCurrentPage(file,page){try{localStorage.setItem(pageStorageKey(file),String(page));}catch(_){}}
+function restorePage(file){var el=document.getElementById('layout-config');
+ if(!el||JSON.parse(el.textContent).file!==file)return;
+ var saved=Number(localStorage.getItem(pageStorageKey(file)));
+ if(Number.isFinite(saved)&&saved>=1)goToPage(saved,false);
+}
 function updatePageNavigation(){var pages=[...document.querySelectorAll('#measured-pages .pageframe')];
  var input=document.getElementById('page-current'),count=document.getElementById('page-count');if(!input||!count||!pages.length)return;
  count.textContent=String(pages.length);input.max=String(pages.length);
- var middle=window.innerHeight/2;
- var current=pages.find(function(page){var r=page.getBoundingClientRect();return r.top<=middle&&r.bottom>=middle;});
- if(!current)current=pages.reduce(function(best,page){var r=page.getBoundingClientRect();
-  var d=Math.min(Math.abs(r.top-middle),Math.abs(r.bottom-middle));return d<best.distance?{page,distance:d}:best;},{page:pages[0],distance:Infinity}).page;
+ var current=pages.find(function(page){var r=page.getBoundingClientRect();return r.bottom>0&&r.top>=-1;});
+ if(!current){var middle=window.innerHeight/2;
+  current=pages.reduce(function(best,page){var r=page.getBoundingClientRect();
+   var d=Math.min(Math.abs(r.top-middle),Math.abs(r.bottom-middle));return d<best.distance?{page,distance:d}:best;},{page:pages[0],distance:Infinity}).page;}
  if(window.fbdPerRowMode==='2'){
   var rowTop=current.getBoundingClientRect().top;
   var row=pages.filter(function(page){return Math.abs(page.getBoundingClientRect().top-rowTop)<2;});
   current=row.find(function(page){return Number(page.dataset.page)===Number(window.fbdCurrentPage);})||row[0]||current;
  }
  var pageNumber=Number(current.dataset.page)||1;if(document.activeElement!==input)input.value=String(pageNumber);
+ var el=document.getElementById('layout-config'),file=el?JSON.parse(el.textContent).file:'';
+ if(file&&window.fbdCurrentPage!==pageNumber)saveCurrentPage(file,pageNumber);
  window.fbdCurrentPage=pageNumber;
  var rowIndex=window.fbdPerRowMode==='2'?Math.floor((pageNumber-1)/2):pageNumber-1;
  var rowCount=window.fbdPerRowMode==='2'?Math.ceil(pages.length/2):pages.length;
  document.getElementById('prev-page').disabled=rowIndex<=0;
  document.getElementById('next-page').disabled=rowIndex>=rowCount-1;
 }
-function goToPage(value){var pages=document.querySelectorAll('#measured-pages .pageframe');
+function goToPage(value,smooth=true){var pages=document.querySelectorAll('#measured-pages .pageframe');
  var input=document.getElementById('page-current'),page=Number(value);if(!pages.length||!input)return;
  if(!Number.isFinite(page)){updatePageNavigation();return;}
  page=Math.max(1,Math.min(pages.length,Math.trunc(page)));input.value=String(page);
  window.fbdCurrentPage=page;
+ var el=document.getElementById('layout-config'),file=el?JSON.parse(el.textContent).file:'';
+ if(file)saveCurrentPage(file,page);
  var targetPage=window.fbdPerRowMode==='2'?Math.floor((page-1)/2)*2+1:page;
  var target=document.querySelector('#measured-pages .pageframe[data-page="'+targetPage+'"]');
- if(target)target.scrollIntoView({behavior:'smooth',block:'start'});
+ if(target)target.scrollIntoView({behavior:smooth?'smooth':'auto',block:'start'});
 }
 function movePage(delta){var input=document.getElementById('page-current');
  if(input)goToPage((Number(input.value)||1)+delta*(window.fbdPerRowMode==='2'?2:1));}
@@ -2547,6 +2593,8 @@ function fitPerRow(mode){
  else setZoom(1);
 }
 window.addEventListener('fbdlayoutdone',function(){
+ var el=document.getElementById('layout-config');
+ if(el)restorePage(JSON.parse(el.textContent).file);
  updatePageNavigation();fitPerRow(window.fbdPerRowMode||'1');});
 window.addEventListener('resize',function(){if(window.fbdFitZoom)fitWidth();});
 """

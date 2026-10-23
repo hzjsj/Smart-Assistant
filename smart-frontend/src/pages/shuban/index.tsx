@@ -392,6 +392,9 @@ function ShubanWorkspace({ userId }: { userId: string }) {
     queryKey: queryKeys.preview(selectedFile),
     queryFn: ({ signal }) => getPreview(selectedFile?.id || '', signal),
     enabled: Boolean(selectedFile) && area === 'document',
+    // 预览内容由文档版本决定；窗口重新聚焦时不需要重新获取，也不应打断页码状态。
+    staleTime: Number.POSITIVE_INFINITY,
+    refetchOnWindowFocus: false,
   });
 
   const files = useMemo(
@@ -1069,7 +1072,8 @@ function PreviewPane({
   const { styles } = useStyles();
   useLayoutEffect(() => {
     onStart();
-  }, [file.id, file.version, attempt, preview, loading, onStart]);
+    // loading 变化可能来自窗口重新聚焦的查询；只有文档版本、重试或预览内容变化才重置状态。
+  }, [file.id, file.version, attempt, preview, onStart]);
   useEffect(() => {
     if (loading || !preview || phase !== 'rendering') return;
     const timer = window.setTimeout(onTimeout, 90000);
