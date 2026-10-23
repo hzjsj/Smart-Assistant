@@ -2489,11 +2489,15 @@ b.setAttribute('aria-pressed',String(!off));}}
 function toggleOperations(){var d=document.getElementById('operations');if(d.open)d.close();else d.showModal();}
 document.addEventListener('DOMContentLoaded',function(){
  var d=document.getElementById('operations'),content=document.getElementById('operations-content');
- document.querySelectorAll('main .tabs,main .note,main .zoombar').forEach(el=>content.appendChild(el));
- d.addEventListener('click',function(e){if(e.target===d){var r=d.getBoundingClientRect();
-  if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}});
- d.addEventListener('close',function(){document.getElementById('operationsbtn').setAttribute('aria-expanded','false');});
- document.getElementById('operationsbtn').addEventListener('click',function(){this.setAttribute('aria-expanded',String(d.open));});
+ if(d&&content){
+  document.querySelectorAll('main .tabs,main .note,main .zoombar').forEach(el=>content.appendChild(el));
+  d.addEventListener('click',function(e){if(e.target===d){var r=d.getBoundingClientRect();
+   if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}});
+  d.addEventListener('close',function(){var btn=document.getElementById('operationsbtn');
+   if(btn)btn.setAttribute('aria-expanded','false');});
+  var btn=document.getElementById('operationsbtn');
+  if(btn)btn.addEventListener('click',function(){this.setAttribute('aria-expanded',String(d.open));});
+ }
 });
 /* 悬浮按钮：切换顶部工具栏显隐 */
 function toggleHeader(){var off=document.body.classList.toggle('hide-header');

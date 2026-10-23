@@ -51,12 +51,11 @@ def validate_docx(path: Path) -> None:
         raise HTTPException(status_code=400, detail="Word 文件无效或已损坏") from exc
 
 
-def _output_stem(filename: str, template: WordTemplate) -> str:
+def _output_stem(filename: str) -> str:
     stem = Path(filename).stem
-    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", stem).strip(" ._")
-    stem = re.sub(r"\s+", "_", stem)[:72] or "Word排版"
-    suffix = "夹册" if template.mode == "booklet" else "正文"
-    return f"{stem}_{suffix}"
+    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", stem).strip(" .")
+    stem = stem[:240] or "Word排版"
+    return stem
 
 
 def _converter_command(source: Path, output_dir: Path, output_name: str,
@@ -170,7 +169,7 @@ def convert_docx(source: Path, output_dir: Path, original_name: str,
         raise HTTPException(status_code=500, detail="Word 转换器未安装")
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_name = _output_stem(original_name, template)
+    output_name = _output_stem(original_name)
     image_prefix = f"W{conversion_id[:8]}_"
     template_head = (
         _extract_text_template_head(template, output_dir)
@@ -251,6 +250,7 @@ def convert_docx(source: Path, output_dir: Path, original_name: str,
         "fbd": fbd_path.name,
         "pro": pro_path.name,
         "preview": preview_path.name,
+        "zipFile": f"{output_name}.zip",
         "warnings": warnings,
     })
     conversion_report.pop("reference", None)
@@ -296,7 +296,7 @@ def convert_docx(source: Path, output_dir: Path, original_name: str,
         encoding="utf-8",
     )
 
-    zip_path = output_dir / "排版结果.zip"
+    zip_path = output_dir / f"{output_name}.zip"
     try:
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as package:
             for path in sorted(output_dir.iterdir(), key=lambda item: item.name.casefold()):

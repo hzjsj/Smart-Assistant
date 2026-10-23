@@ -25,7 +25,9 @@ FBD 文件须位于 ZIP 根目录。若所有条目统一放在一个外层目�
 
 服务端会校验 DOCX 容器：最多 2000 个 ZIP 条目、单条目最大 100 MB、解包总量最大 512 MB，并要求包含 `word/document.xml`。转换中间文件位于当前用户的 `word-conversions/{conversion_id}/` 子目录；成功后删除临时源 DOCX。
 
-成功响应包含 `fileName`、`templateName`、`contentVerified`、`warnings`、`geometry`、`previewUrl` 和 `downloadUrl`。前端展示转换告警和内容核对状态，并提供打开预览及下载 ZIP 的操作。预览和 ZIP 分别通过 `GET /api/shuban/word-conversions/{id}/preview` 与 `GET /api/shuban/word-conversions/{id}/download` 获取。
+成功响应包含 `fileName`、`templateName`、`contentVerified`、`warnings`、`geometry`、`previewUrl` 和 `downloadUrl`。FBD/PRO 的文件名主体采用上传 DOCX 的安全化文件名主体；下载 ZIP 也以同一主体命名。前端展示转换告警和内容核对状态，并提供打开预览、保存排版和下载 ZIP 的操作。预览、ZIP 和保存操作分别通过 `GET /api/shuban/word-conversions/{id}/preview`、`GET /api/shuban/word-conversions/{id}/download` 与 `POST /api/shuban/word-conversions/{id}/save` 完成。
+
+“保存排版”会把转换结果中的 FBD、配套 PRO 和图片/EPS 素材复制到当前用户的 Shuban 根目录，使 FBD 出现在文件清单并可用常规预览 API 打开。同名且内容相同的文件按已保存处理；同名但内容不同的文件不会被覆盖，返回冲突提示。保存完成后应失效前端文件列表缓存。
 
 ## 可选模板
 

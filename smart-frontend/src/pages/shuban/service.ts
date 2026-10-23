@@ -27,6 +27,14 @@ export type WordConversionResult = {
   downloadUrl: string;
 };
 
+export type SaveWordConversionResult = {
+  success: boolean;
+  fbdFileName: string;
+  savedFiles: string[];
+  unchangedFiles: string[];
+  unchanged: boolean;
+};
+
 async function withErrorDetail<T>(task: () => Promise<T>): Promise<T> {
   try {
     return await task();
@@ -120,6 +128,18 @@ export async function convertWord(file: File, templateId: string): Promise<WordC
     });
     const payload = await response.json().catch(() => ({})) as WordConversionResult & { detail?: string };
     if (!response.ok) throw new Error(payload.detail || 'Word 排版失败');
+    return payload;
+  });
+}
+
+export async function saveWordConversion(id: string): Promise<SaveWordConversionResult> {
+  return withErrorDetail(async () => {
+    const response = await fetch(`${API_BASE}/word-conversions/${encodeURIComponent(id)}/save`, {
+      method: 'POST',
+      credentials: 'same-origin',
+    });
+    const payload = await response.json().catch(() => ({})) as SaveWordConversionResult & { detail?: string };
+    if (!response.ok) throw new Error(payload.detail || '保存排版失败');
     return payload;
   });
 }

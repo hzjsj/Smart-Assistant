@@ -1,6 +1,7 @@
 import {
   ArrowLeftOutlined,
   BookOutlined,
+  CheckOutlined,
   ClockCircleOutlined,
   DownloadOutlined,
   EyeInvisibleOutlined,
@@ -13,6 +14,7 @@ import {
   PlusOutlined,
   PrinterOutlined,
   ReloadOutlined,
+  SaveOutlined,
   SearchOutlined,
   UndoOutlined,
   UnorderedListOutlined,
@@ -60,6 +62,7 @@ import {
   getTokens,
   getWordTemplates,
   listFiles,
+  saveWordConversion,
 } from './service';
 import type { WordConversionResult, WordTemplate } from './service';
 import { useStyles } from './styles';
@@ -322,6 +325,8 @@ function ShubanWorkspace() {
   const [wordModalOpen, setWordModalOpen] = useState(false);
   const [wordTemplateId, setWordTemplateId] = useState<string>();
   const [wordSubmitting, setWordSubmitting] = useState(false);
+  const [wordSaving, setWordSaving] = useState(false);
+  const [wordSaved, setWordSaved] = useState(false);
   const [wordResult, setWordResult] = useState<WordConversionResult>();
   const [wordResultOpen, setWordResultOpen] = useState(false);
   const [layoutStatus, setLayoutStatus] = useState('');
@@ -404,6 +409,7 @@ function ShubanWorkspace() {
     try {
       const result = await convertWord(pendingWordFile, wordTemplateId);
       setWordResult(result);
+      setWordSaved(false);
       setWordModalOpen(false);
       setWordResultOpen(true);
       setPendingWordFile(undefined);
@@ -411,6 +417,33 @@ function ShubanWorkspace() {
       void appMessage.error(error instanceof Error ? error.message : 'Word 排版失败');
     } finally {
       setWordSubmitting(false);
+    }
+  };
+
+  const saveWordTypesetting = async () => {
+    if (!wordResult || wordSaving || wordSaved) return;
+    setWordSaving(true);
+    try {
+      const result = await saveWordConversion(wordResult.id);
+      const filename = result.fbdFileName;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: queryKeys.files }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.preview(filename) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.report(filename) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.tokens(filename) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.ast(filename) }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.text(filename) }),
+      ]);
+      setWordSaved(true);
+      void appMessage.success(
+        result.unchanged
+          ? `${result.fbdFileName} 已在文件清单中`
+          : `${result.fbdFileName} 已保存到文件清单`,
+      );
+    } catch (error) {
+      void appMessage.error(error instanceof Error ? error.message : '保存排版失败');
+    } finally {
+      setWordSaving(false);
     }
   };
 
@@ -891,7 +924,7 @@ function ShubanWorkspace() {
           okButtonProps={{ disabled: !pendingWordFile || !wordTemplateId }}
           destroyOnHidden
         >
-          <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+          <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
             <Typography.Text>{pendingWordFile?.name || '已选择 Word 文档'}</Typography.Text>
             <Form layout="vertical">
               <Form.Item label="版式尺寸" required>
@@ -934,7 +967,7 @@ function ShubanWorkspace() {
           destroyOnHidden
         >
           {wordResult && (
-            <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+            <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
               <Descriptions size="small" bordered column={1}>
                 <Descriptions.Item label="FBD 文件">{wordResult.fileName}</Descriptions.Item>
                 <Descriptions.Item label="使用模板">{wordResult.templateName}</Descriptions.Item>
@@ -955,6 +988,14 @@ function ShubanWorkspace() {
               <Space wrap>
                 <Button type="primary" icon={<FileSearchOutlined />} href={wordResult.previewUrl} target="_blank">
                   打开预览
+                </Button>
+                <Button
+                  icon={wordSaved ? <CheckOutlined /> : <SaveOutlined />}
+                  loading={wordSaving}
+                  disabled={wordSaved}
+                  onClick={() => void saveWordTypesetting()}
+                >
+                  {wordSaved ? '已保存' : '保存排版'}
                 </Button>
                 <Button icon={<DownloadOutlined />} href={wordResult.downloadUrl}>
                   下载排版 ZIP

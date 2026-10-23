@@ -98,6 +98,54 @@ def _archive_entry_name(entry: zipfile.ZipInfo) -> str:
     return filename.replace("\\", "/")
 
 
+def _upload_filename(filename: str | None) -> str:
+    """Normalize multipart filenames decoded as CP437/Latin-1 on some Windows clients."""
+    name = (filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+    if any("\u3400" <= char <= "\u9fff" for char in name):
+        return name
+
+    for source_encoding, target_encoding in (("cp437", "gb18030"), ("latin1", "utf-8")):
+        try:
+            decoded = name.encode(source_encoding).decode(target_encoding)
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+        if decoded != name and any("\u3400" <= char <= "\u9fff" for char in decoded):
+            return decoded
+    return name
+
+
+def _same_file_contents(source: Path, destination: Path) -> bool:
+    try:
+        if not destination.is_file() or source.stat().st_size != destination.stat().st_size:
+            return False
+        with source.open("rb") as left, destination.open("rb") as right:
+            while True:
+                left_chunk = left.read(1024 * 1024)
+                right_chunk = right.read(1024 * 1024)
+                if left_chunk != right_chunk:
+                    return False
+                if not left_chunk:
+                    return True
+    except OSError:
+        return False
+
+
+def _replace_uploaded_file(source: Path, destination: Path, display_name: str) -> bool:
+    """Skip identical imports; report locked/existing target paths without leaking WinError 5."""
+    if _same_file_contents(source, destination):
+        return False
+    try:
+        os.replace(source, destination)
+    except PermissionError as exc:
+        status = 409 if destination.exists() else 500
+        detail = (
+            f"目标文件无法覆盖：{display_name}。请关闭正在使用该文件的程序，"
+            "或移走用户目录中的同名文件后重试。"
+        )
+        raise HTTPException(status_code=status, detail=detail) from exc
+    return True
+
+
 def _extract_archive(archive_path: Path, root: Path, archive_size: int) -> dict:
     try:
         archive = zipfile.ZipFile(archive_path)
@@ -208,7 +256,7 @@ def _extract_archive(archive_path: Path, root: Path, archive_size: int) -> dict:
                 resolved_parent = destination.parent.resolve()
                 if resolved_parent != resolved_root and resolved_root not in resolved_parent.parents:
                     raise HTTPException(status_code=400, detail=f"压缩包目标路径超出用户目录：{relative_name}")
-                os.replace(source, destination)
+                _replace_uploaded_file(source, destination, relative_name)
                 imported_files.append(relative_name)
         except (zipfile.BadZipFile, RuntimeError, EOFError, NotImplementedError, zlib.error) as exc:
             raise HTTPException(status_code=400, detail="压缩包校验失败，无法解压") from exc
@@ -310,7 +358,7 @@ async def convert_word_file(
     template_id: str = Form(...),
     current_user: User = Depends(get_current_user),
 ):
-    name = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+    name = _upload_filename(file.filename)
     if Path(name).suffix.lower() != ".docx":
         raise HTTPException(status_code=400, detail="仅支持 .docx Word 文件")
     template = get_template(template_id)
@@ -367,10 +415,85 @@ def get_word_conversion_preview(conversion_id: str, current_user: User = Depends
 
 @router.get("/word-conversions/{conversion_id}/download")
 def download_word_conversion(conversion_id: str, current_user: User = Depends(get_current_user)):
-    path = _conversion_dir(current_user, conversion_id) / "排版结果.zip"
-    if not path.is_file():
+    conversion_dir = _conversion_dir(current_user, conversion_id)
+    archives = [path for path in conversion_dir.iterdir() if path.is_file() and path.suffix.lower() == ".zip"]
+    if len(archives) != 1:
         raise HTTPException(status_code=404, detail="排版 ZIP 不存在")
+    path = archives[0]
     return FileResponse(path, media_type="application/zip", filename=path.name)
+
+
+@router.post("/word-conversions/{conversion_id}/save")
+def save_word_conversion(conversion_id: str, current_user: User = Depends(get_current_user)):
+    conversion_dir = _conversion_dir(current_user, conversion_id)
+    root = _user_dir(current_user)
+    fbd_files = [path for path in conversion_dir.iterdir() if path.is_file() and path.suffix.lower() == ".fbd"]
+    pro_files = [path for path in conversion_dir.iterdir() if path.is_file() and path.suffix.lower() == ".pro"]
+    if len(fbd_files) != 1 or len(pro_files) != 1:
+        raise HTTPException(status_code=500, detail="转换结果缺少唯一的 FBD 或 PRO 文件")
+
+    asset_extensions = ARCHIVE_FILE_EXTENSIONS - {".fbd", ".pro"}
+    assets = [
+        path for path in conversion_dir.iterdir()
+        if path.is_file() and path.suffix.lower() in asset_extensions
+    ]
+    files = sorted([*fbd_files, *pro_files, *assets], key=lambda path: path.name.casefold())
+    unchanged: list[str] = []
+    conflicts: list[str] = []
+    for source in files:
+        destination = root / source.name
+        if destination.exists():
+            if _same_file_contents(source, destination):
+                unchanged.append(source.name)
+            else:
+                conflicts.append(source.name)
+    if conflicts:
+        names = "、".join(conflicts[:5])
+        raise HTTPException(
+            status_code=409,
+            detail=f"文件清单中已有同名且内容不同或无法读取的文件，未保存以避免覆盖：{names}。请移走旧文件后重试。",
+        )
+
+    created: list[Path] = []
+    try:
+        for source in files:
+            if source.name in unchanged:
+                continue
+            destination = root / source.name
+            try:
+                with source.open("rb") as incoming, destination.open("xb") as saved:
+                    created.append(destination)
+                    shutil.copyfileobj(incoming, saved)
+                shutil.copystat(source, destination)
+            except FileExistsError as exc:
+                if _same_file_contents(source, destination):
+                    unchanged.append(source.name)
+                    continue
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"保存时发现同名文件：{source.name}。请移走旧文件后重试。",
+                ) from exc
+            except PermissionError as exc:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"无法写入文件：{source.name}。请关闭占用该文件的程序后重试。",
+                ) from exc
+    except Exception:
+        for path in reversed(created):
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+    _analyze.cache_clear()
+    return {
+        "success": True,
+        "fbdFileName": fbd_files[0].name,
+        "savedFiles": [path.name for path in files],
+        "unchangedFiles": sorted(set(unchanged), key=str.casefold),
+        "unchanged": len(set(unchanged)) == len(files),
+    }
 
 
 @router.post("/upload")
@@ -378,7 +501,7 @@ async def upload_file(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
-    name = (file.filename or "").replace("\\", "/").rsplit("/", 1)[-1]
+    name = _upload_filename(file.filename)
     suffix = Path(name).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="仅支持 ZIP、FBD、PRO 及预览所需的图片文件")
@@ -399,8 +522,8 @@ async def upload_file(
         if suffix == ".zip":
             result = _extract_archive(temporary, root, total)
         else:
-            os.replace(temporary, destination)
-            result = {"success": True, "name": name, "size": total}
+            changed = _replace_uploaded_file(temporary, destination, name)
+            result = {"success": True, "name": name, "size": total, "unchanged": not changed}
     finally:
         await file.close()
         temporary.unlink(missing_ok=True)
