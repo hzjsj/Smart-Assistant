@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, Text
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
+from sqlalchemy.sql import text
 from datetime import datetime
 from database import Base
 
@@ -25,6 +26,7 @@ class FileRecord(Base):
     )
     zip_source = Column(String(500), nullable=True, comment="来源zip文件名")
     oss_html_url = Column(String(500), nullable=True, comment="OSS上的HTML预览文件地址（extra_formats 生成）")
+    favorite = Column(Boolean, nullable=False, default=False, server_default=text("0"), comment="是否收藏")
     mineru_task_id = Column(String(100), nullable=True, index=True, comment="MinerU 任务ID")
     mineru_state = Column(String(20), nullable=True, comment="MinerU 任务状态: submitted/done/error")
     mineru_zip_url = Column(String(1000), nullable=True, comment="MinerU 返回的 zip 下载地址")

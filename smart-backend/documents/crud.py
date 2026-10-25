@@ -28,6 +28,7 @@ def _to_dict(record: FileRecord) -> dict:
         "oss_images": record.oss_images,
         "zip_source": record.zip_source,
         "oss_html_url": record.oss_html_url,
+        "favorite": bool(record.favorite),
         "mineru_task_id": record.mineru_task_id,
         "mineru_state": record.mineru_state,
         "mineru_zip_url": record.mineru_zip_url,
@@ -98,23 +99,37 @@ def get_file_records(db: Session, page: int = 1, page_size: int = 10,
 def get_mineru_tasks(db: Session, page: int = 1, page_size: int = 10,
                      original_name: str | None = None,
                      state: str | None = None,
+                     favorite: bool | None = None,
                      uid_filter: str | None = None) -> dict:
     """MinerU 解析任务列表（仅 ``mineru_task_id`` 非空的记录），创建时间倒序。
 
     供 ``GET /api/mineru/tasks`` 使用：与 get_file_records 的区别是
-    过滤掉普通文档/知识库上传，并支持按 ``mineru_state`` 筛选。
+    过滤掉普通文档/知识库上传，并支持按 ``mineru_state`` / ``favorite`` 筛选。
     """
     query = db.query(FileRecord).filter(FileRecord.mineru_task_id.isnot(None))
     if original_name:
         query = query.filter(FileRecord.original_name.ilike(f"%{original_name}%"))
     if state:
         query = query.filter(FileRecord.mineru_state == state)
+    if favorite is not None:
+        query = query.filter(FileRecord.favorite == favorite)
     if uid_filter:
         query = query.filter(FileRecord.uid == uid_filter)
     total = query.count()
     offset = (page - 1) * page_size
     items = query.order_by(FileRecord.created_at.desc()).offset(offset).limit(page_size).all()
     return _to_file_list(items, total)
+
+
+def toggle_mineru_favorite(db: Session, file_id: int) -> FileRecord | None:
+    """切换任务收藏状态，返回更新后的记录（不存在返回 None）。"""
+    record = get_file_record(db, file_id)
+    if not record:
+        return None
+    record.favorite = not bool(record.favorite)
+    db.commit()
+    db.refresh(record)
+    return record
 
 
 def update_file_record(db: Session, file_id: int, data: FileUpdate) -> FileRecord | None:

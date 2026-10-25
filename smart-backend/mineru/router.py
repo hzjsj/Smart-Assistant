@@ -146,6 +146,7 @@ def list_mineru_tasks(
     state: str | None = Query(
         None, description="状态筛选: submitted(解析中) / done(成功) / error(失败)"
     ),
+    favorite: bool | None = Query(None, description="收藏筛选：true 仅收藏 / false 仅未收藏 / 不传为全部"),
     db=Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -156,6 +157,7 @@ def list_mineru_tasks(
         int(pageSize),
         original_name=original_name,
         state=state,
+        favorite=favorite,
         uid_filter=current_user.userid,
     )
     # 轮询兜底：后台向 MinerU 同步 submitted 任务的真实状态，不阻塞本次响应
@@ -163,3 +165,16 @@ def list_mineru_tasks(
     # 历史任务补齐：done 且无 HTML 预览的记录后台用 pandoc 生成（新任务原生有）
     ensure_html_preview(result.get("data") or [])
     return result
+
+
+@router.post("/tasks/{task_id}/favorite", summary="收藏/取消收藏任务")
+def toggle_task_favorite(
+    task_id: int,
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    record = crud.get_file_record(db, task_id)
+    if not record or (record.uid and record.uid != current_user.userid):
+        raise HTTPException(status_code=404, detail="任务不存在")
+    record = crud.toggle_mineru_favorite(db, task_id)
+    return {"id": task_id, "favorite": bool(record.favorite)}
