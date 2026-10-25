@@ -628,51 +628,85 @@ html.mu-dragging * {
   min-width: 100% !important;
 }
 
-/* ===== 新解析（上传视图） ===== */
-.mu-upload-wrap {
-  flex: 1;
-  max-width: 760px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 32px 24px 24px;
+/* ===== 新解析（上传视图，参考智能解析首页） ===== */
+.mu-upload-page {
+  /* .mu-main 是 flex 拉伸出的确定高度，显式 height 让子元素百分比 min-height 可解析 */
+  height: 100%;
   overflow: auto;
+  /* 整页纯灰底；点阵只铺在内容容器上，四周留出纯灰边距 */
+  background-color: #f7f8fa;
 }
 
-.mu-upload-hero {
-  margin-bottom: 20px;
+.mu-upload-inner {
+  /* 上下左右各留 12px 纯灰边距，点阵随内容区域延伸 */
+  width: calc(100% - 24px);
+  max-width: 900px;
+  margin: 12px auto;
+  padding: 36px 32px 32px;
+  min-height: calc(100% - 24px);
+  background-image: radial-gradient(circle, #d8dce6 1px, transparent 1px);
+  background-size: 22px 22px;
 }
 
-.mu-upload-hero-icon {
-  font-size: 40px;
-  color: var(--mu-primary);
+.mu-upload-heading {
+  margin-top: 24px;
+  margin-bottom: 28px;
 }
 
-.mu-upload-hero-title {
+.mu-upload-title {
   margin: 0 !important;
+  font-size: 32px !important;
+  letter-spacing: 0.5px;
 }
 
-.mu-upload-dragger.mu-upload-drag {
-  border-radius: 10px;
+.mu-upload-subtitle {
+  display: block;
+  margin-top: 8px;
+  font-size: 15px;
 }
 
-.mu-upload-dragger-inner {
-  padding: 28px 0;
+.mu-upload-card-holder {
+  position: relative;
 }
 
-.mu-upload-dragger-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 56px;
-  height: 56px;
-  font-size: 26px;
-  color: var(--mu-primary);
-  background: var(--mu-blue-hover, rgba(13, 83, 222, 0.06));
-  border-radius: 50%;
+/* 提交成功后的右上角入口 */
+.mu-upload-view-tasks {
+  position: absolute;
+  top: -30px;
+  right: 0;
+  z-index: 2;
+  padding: 0;
 }
 
-.mu-upload-dragger-hint {
-  font-size: 12px;
+/* className 落在 antd 的 wrapper 上，真正的拖拽区是内层 .ant-upload-drag，
+   须用后代选择器覆盖（antd 默认给拖拽区 rgba(0,0,0,0.02) 微灰背景） */
+.mu-upload-dragger .ant-upload-drag {
+  border-radius: 16px;
+  border-color: #c3c9d6;
+  background: #fff;
+  transition: border-color 0.2s;
+}
+
+.mu-upload-dragger .ant-upload-drag:hover,
+.mu-upload-dragger .ant-upload.ant-upload-drag-hover {
+  border-color: var(--mu-primary);
+}
+
+.mu-upload-card-inner {
+  padding: 48px 0 44px;
+}
+
+.mu-upload-art {
+  width: 200px;
+  height: auto;
+  user-select: none;
+  filter: drop-shadow(0 6px 14px rgba(13, 83, 222, 0.12));
+}
+
+.mu-upload-action {
+  height: 38px;
+  padding: 0 22px;
+  border-radius: 8px;
 }
 
 .mu-upload-list {
@@ -682,7 +716,8 @@ html.mu-dragging * {
 .mu-upload-row {
   padding: 10px 14px;
   border-radius: 8px;
-  background: #f4f5f9;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(18, 19, 22, 0.06);
 }
 
 .mu-upload-row + .mu-upload-row {
@@ -707,12 +742,8 @@ html.mu-dragging * {
   font-size: 12px;
 }
 
-.mu-status-uploading {
-  color: var(--mu-text-weak);
-}
-
-.mu-upload-footer {
-  margin-top: 20px;
+.mu-upload-modal-tip {
+  margin-bottom: 12px;
 }
 
 /* 解析中状态（第三态，真实数据 mineru_state=submitted） */

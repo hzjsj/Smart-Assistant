@@ -135,7 +135,7 @@ export default function Sidebar({
             <span className="mu-logo-badge">
               <FundOutlined />
             </span>
-            <Typography.Text className="mu-logo-name">smart</Typography.Text>
+            <Typography.Text className="mu-logo-name">文档解析</Typography.Text>
           </Flex>
           <Tooltip title="收起侧栏">
             <Button

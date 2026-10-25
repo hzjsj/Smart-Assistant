@@ -1,7 +1,6 @@
 import {
   FilterOutlined,
   FundOutlined,
-  InfoCircleFilled,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
 } from '@ant-design/icons';
@@ -110,7 +109,7 @@ function TaskManagement() {
                     <FundOutlined />
                   </span>
                   <Typography.Text className="mu-logo-name">
-                    smart
+                    文档解析
                   </Typography.Text>
                 </Flex>
                 <SidebarNavMenu
@@ -146,46 +145,23 @@ function TaskManagement() {
       />
 
       <main className="mu-main">
-        <header className="mu-header mu-slide-in">
-          {/* 折叠/展开双图标按钮：折叠态下隐藏自身占位以让位给固定热区按钮，消除重叠且标题不跳动 */}
-          <Button
-            type="text"
-            size="small"
-            className={`mu-expand-btn${folded ? ' mu-expand-btn-placeholder' : ''}`}
-            onClick={() => setFolded((f) => !f)}
-          >
-            <MenuFoldOutlined className="mu-icon-layer mu-icon-fold" />
-            <MenuUnfoldOutlined className="mu-icon-layer mu-icon-expand" />
-          </Button>
-          <Typography.Title level={4} className="mu-header-title">
-            {activeNavKey === 'new'
-              ? '新解析'
-              : activeNavKey === 'favorites'
-                ? '我的收藏'
-                : '任务管理'}
-          </Typography.Title>
-          {activeNavKey === 'new' ? (
-            <Typography.Text
-              type="secondary"
-              ellipsis
-              className="mu-header-tip"
+        {/* 新解析（智能解析）视图无顶部导航栏：内容区自带大标题，与官网首页一致 */}
+        {activeNavKey !== 'new' && (
+          <header className="mu-header mu-slide-in">
+            {/* 折叠/展开双图标按钮：折叠态下隐藏自身占位以让位给固定热区按钮，消除重叠且标题不跳动 */}
+            <Button
+              type="text"
+              size="small"
+              className={`mu-expand-btn${folded ? ' mu-expand-btn-placeholder' : ''}`}
+              onClick={() => setFolded((f) => !f)}
             >
-              <InfoCircleFilled className="mu-tip-icon" />
-              支持 .pdf / .docx / .doc / .md，解析完成后可在任务管理查看
-            </Typography.Text>
-          ) : (
-            <Typography.Text
-              type="secondary"
-              ellipsis
-              className="mu-header-tip"
-            >
-              <InfoCircleFilled className="mu-tip-icon" />
-              任务仅保留30天；永久保存需安装
-              <Typography.Link className="mu-tip-link">客户端</Typography.Link>
-            </Typography.Text>
-          )}
+              <MenuFoldOutlined className="mu-icon-layer mu-icon-fold" />
+              <MenuUnfoldOutlined className="mu-icon-layer mu-icon-expand" />
+            </Button>
+            <Typography.Title level={4} className="mu-header-title">
+              {activeNavKey === 'favorites' ? '我的收藏' : '任务管理'}
+            </Typography.Title>
 
-          {activeNavKey !== 'new' && (
             <Space size={10} className="mu-header-actions">
               <Dropdown
                 menu={{
@@ -216,8 +192,8 @@ function TaskManagement() {
                 onChange={(e) => setSearch(e.target.value)}
               />
             </Space>
-          )}
-        </header>
+          </header>
+        )}
 
         {activeNavKey === 'new' ? (
           <UploadView onViewTasks={() => setActiveNavKey('tasks')} />
