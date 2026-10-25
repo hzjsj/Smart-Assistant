@@ -1,4 +1,8 @@
-import { PictureOutlined, ScissorOutlined } from '@ant-design/icons';
+import {
+  DoubleRightOutlined,
+  PictureOutlined,
+  ScissorOutlined,
+} from '@ant-design/icons';
 import {
   Button,
   Card,
@@ -46,6 +50,8 @@ interface QuestionListProps {
   onUnmergeQuestion: (id: string) => void;
   /** 用户手动滚动列表时清除选中（避免自动定位把列表拽回选中题） */
   onDeselectQuestion: () => void;
+  /** 隐藏题目列表区域（卡片头部最右按钮）；缺省不显示该按钮 */
+  onCollapse?: () => void;
 }
 
 const QuestionItem = memo(function QuestionItem({
@@ -225,6 +231,7 @@ export default function QuestionList({
   onDeleteQuestion,
   onUnmergeQuestion,
   onDeselectQuestion,
+  onCollapse,
 }: QuestionListProps) {
   const { styles } = useStyles();
   const listRef = useRef<HTMLDivElement>(null);
@@ -364,6 +371,18 @@ export default function QuestionList({
             {total} 题
           </Tag>
         </Space>
+      }
+      extra={
+        onCollapse ? (
+          <Tooltip title="隐藏题目列表" placement="top">
+            <Button
+              size="small"
+              type="text"
+              icon={<DoubleRightOutlined />}
+              onClick={onCollapse}
+            />
+          </Tooltip>
+        ) : undefined
       }
     >
       <div

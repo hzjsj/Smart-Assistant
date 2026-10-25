@@ -193,6 +193,37 @@ export function buildRemoteCropUrl(imageUrl: string, rect: Rect): string {
   return `${baseUrl}?${process}`;
 }
 
+/** 多个矩形的包围盒（空数组返回 null） */
+export function unionRect(rects: Rect[]): Rect | null {
+  if (!rects.length) return null;
+  const left = Math.min(...rects.map((rect) => rect.x));
+  const top = Math.min(...rects.map((rect) => rect.y));
+  const right = Math.max(...rects.map((rect) => rect.x + rect.w));
+  const bottom = Math.max(...rects.map((rect) => rect.y + rect.h));
+  return { x: left, y: top, w: right - left, h: bottom - top };
+}
+
+/** EduTutor 子图链接是否为临时签名链（带 Expires/Signature，过期即 403） */
+export function isTemporaryImageUrl(url: unknown): boolean {
+  return typeof url === 'string' && /[?&](Expires|Signature)=/.test(url);
+}
+
+/**
+ * 持久化题目图：EduTutor 返回的 merged_image 是临时签名链，
+ * 用已上传到自有 OSS 的页原图按题目包围盒裁剪生成持久链替代。
+ */
+export function persistMergedImage(
+  rawUrl: unknown,
+  pageImageUrl: string,
+  rects: Rect[],
+): string {
+  const url = typeof rawUrl === 'string' ? rawUrl : '';
+  if (!url) return '';
+  if (!isTemporaryImageUrl(url)) return url;
+  const bounds = unionRect(rects);
+  return bounds ? buildRemoteCropUrl(pageImageUrl, bounds) : url;
+}
+
 function collectFigureUrls(figure: unknown, sourceImageUrl: string): string[] {
   if (!figure) return [];
   if (typeof figure === 'string') return figure.trim() ? [figure.trim()] : [];
@@ -409,7 +440,14 @@ export function syncMergedView(question: QietiQuestion): void {
   question.subImages = sources.flatMap((source) => source.subImages);
   question.mergedImage =
     sources.find((source) => source.mergedImage)?.mergedImage ?? '';
-  question.type = sources.find((source) => source.type)?.type ?? question.type;
+  // 题型优选：跨页残干常被接口误判为问答题，而续排碎片（选项区）能识别出选择题，
+  // 故任一来源为选择题系或含选项文本时优先采信
+  const typedSources = sources.filter((source) => source.type);
+  const choiceSource = typedSources.find(
+    (source) =>
+      /选择|单选|多选/.test(source.type) || source.info.optionTexts.length > 0,
+  );
+  question.type = choiceSource?.type ?? typedSources[0]?.type ?? question.type;
 
   const info: QietiQuestion['info'] = {
     figures: [],
@@ -539,6 +577,60 @@ export function unmergeQuestion(pages: QietiPage[], id: string): QietiPage[] {
     hostPage.questions.push(newQuestion);
   });
   return next;
+}
+
+// ─── 跨页碎片自动归并 ─────────────────────────────────────────────────
+
+/** 题干以题号开头（如 "6."、"12、"、"6 ."）；跨页续排的碎片没有题号 */
+const QUESTION_NO_PREFIX_RE = /^\s*\d{1,2}\s*[.、．]/;
+
+/**
+ * 下一页首条是否上一页末题的跨页续排：
+ * 规则 a：无题干（纯选项/纯图碎片，且非带小问的独立题）必是续排——
+ *   实测跨页卷（如 2025 全国Ⅰ卷第 6/10 题）的下页首条均为无题干碎片；
+ * 规则 b：题干无题号时，结合前页末题的"未完结"信号判定——
+ *   题干以逗号/顿号等续接标点收尾，或前页末题为选择题系但选项不全。
+ */
+function isCrossPageContinuation(
+  prev: QietiQuestion,
+  first: QietiQuestion,
+): boolean {
+  const stem = first.info.stemText.trim();
+  if (!stem) return !first.info.subquestionTexts.length;
+  if (QUESTION_NO_PREFIX_RE.test(stem)) return false;
+
+  const prevStem = prev.info.stemText.trim();
+  const prevOpenEnded =
+    /[，,、；;：:]$/.test(prevStem) || /[（(]\s*[）)]$/.test(prevStem);
+  const prevChoiceShort =
+    /选择|单选|多选/.test(prev.type) && prev.info.optionTexts.length < 4;
+  return prevOpenEnded || prevChoiceShort;
+}
+
+/**
+ * 跨页碎片自动归并：逐页独立识别后，把下一页首条的续排碎片并入上一页最后一题
+ * （逐对调用 mergeQuestions：主题留在原页、跨页框带 pageId、sources 可拆分还原）。
+ * 需在 reindexQuestions 之后调用（题号已就绪，主题取题号最小者即前页末题）。
+ * 返回新 pages；无跨页续排时原样返回入参。
+ */
+export function mergeCrossPageFragments(pages: QietiPage[]): QietiPage[] {
+  const pairs: [string, string][] = [];
+  let prevQuestion: QietiQuestion | null = null;
+  for (const page of pages) {
+    const first = page.questions[0];
+    if (first && prevQuestion && isCrossPageContinuation(prevQuestion, first)) {
+      pairs.push([prevQuestion.id, first.id]);
+    }
+    const last = page.questions[page.questions.length - 1];
+    if (last) prevQuestion = last;
+  }
+
+  let current = pages;
+  for (const [prevId, firstId] of pairs) {
+    const merged = mergeQuestions(current, [prevId, firstId]);
+    if (merged !== current) current = merged;
+  }
+  return current;
 }
 
 /** pos_list 多边形 → 页面坐标系内的矩形（clamp 到页面边界，保证最小尺寸），并标注所属页 */

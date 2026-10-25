@@ -2,16 +2,13 @@ import {
   ApartmentOutlined,
   ClearOutlined,
   DoubleLeftOutlined,
-  DoubleRightOutlined,
   DownloadOutlined,
-  FileTextOutlined,
-  ProfileOutlined,
   SaveOutlined,
   ScanOutlined,
 } from '@ant-design/icons';
-import { history } from '@umijs/max';
 import { App, Button, Popconfirm, Splitter, Tooltip } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import SideNav, { useSideNavStyles } from '../components/SideNav';
 import {
   CACHE_KEY,
   DETECT_REQUESTS_PER_SECOND,
@@ -35,10 +32,12 @@ import {
   getQuestionRects,
   isMergedQuestion,
   mapApiQuestionType,
+  mergeCrossPageFragments,
   mergeCutApiEntries,
   mergeQuestions,
   normalizeQuestionInfo,
   normalizeQuestionShape,
+  persistMergedImage,
   rectsFromPosList,
   reindexQuestions,
   serializeRect,
@@ -70,7 +69,9 @@ async function loadPdfJs() {
 
 export default function QietiCutPage() {
   const { message, modal } = App.useApp();
-  const { styles, cx } = useStyles();
+  const { styles } = useStyles();
+  // 悬浮导航栏按钮样式（组件本体在 components/SideNav，本页 children 按钮沿用同款）
+  const { styles: navStyles, cx: navCx } = useSideNavStyles();
 
   const pageSectionRefs = useRef<(HTMLElement | null)[]>([]);
   const thumbRefs = useRef<(HTMLElement | null)[]>([]);
@@ -93,16 +94,8 @@ export default function QietiCutPage() {
   const [mergeFragments, setMergeFragments] = useState(true);
   /** 供 runAutoDetect 闭包读取的当前值（ref 避免依赖过期闭包） */
   const mergeFragmentsRef = useRef(true);
-  /** 右侧 Win10 风格导航栏显示/收起 */
-  const [navOpen, setNavOpen] = useState(true);
-
-  // 导航栏开合通过 CSS 变量广播给所有层级（含 Portal 渲染的缩略图坞）腾出右缘空间
-  useEffect(() => {
-    document.body.style.setProperty('--qieti-nav-w', navOpen ? '56px' : '0px');
-    return () => {
-      document.body.style.removeProperty('--qieti-nav-w');
-    };
-  }, [navOpen]);
+  /** 右侧题目列表区域显示/隐藏（列表卡片头部最右按钮切换） */
+  const [listOpen, setListOpen] = useState(true);
 
   useEffect(() => {
     pagesRef.current = pages;
@@ -536,10 +529,11 @@ export default function QietiCutPage() {
                           (item) => typeof item === 'string' && item.trim(),
                         )
                       : [],
-                    mergedImage:
-                      typeof question?.merged_image === 'string'
-                        ? question.merged_image
-                        : '',
+                    mergedImage: persistMergedImage(
+                      question?.merged_image,
+                      uploadedUrl,
+                      rects,
+                    ),
                     info: normalizeQuestionInfo(question?.info, uploadedUrl),
                   });
                 })
@@ -570,14 +564,20 @@ export default function QietiCutPage() {
           }
         });
 
+        // 先全局编号（跨页归并的主题取题号最小者，即前页末题），再归并跨页续排碎片
         reindexQuestions(next);
-        const detectedCount = next.reduce(
+        let resultPages: QietiPage[] = next;
+        if (mergeFragmentsRef.current) {
+          resultPages = mergeCrossPageFragments(next);
+          if (resultPages !== next) reindexQuestions(resultPages);
+        }
+        const detectedCount = resultPages.reduce(
           (sum, page) => sum + page.questions.length,
           0,
         );
         if (detectRunIdRef.current !== runId) return;
 
-        setPages(next);
+        setPages(resultPages);
         setSelectedQuestionIds([]);
 
         if (failedMessages.length) {
@@ -880,90 +880,90 @@ export default function QietiCutPage() {
     setCurrentPageIndex(pageIndex);
   };
 
+  // 左侧页面画布：列表隐藏时直接占满全宽，避免 PageViewer props 双份维护
+  const pagePanel = !pages.length ? (
+    <UploadCard onHandleFiles={handleFiles} />
+  ) : (
+    <PageViewer
+      pages={pages}
+      currentPageIndex={currentPageIndex}
+      onSwitchPage={switchPage}
+      onSelectPage={setCurrentPageIndex}
+      pageSectionRefs={pageSectionRefs}
+      thumbRefs={thumbRefs}
+      selectedQuestionIds={selectedQuestionIds}
+      questionsByPageId={questionsByPageId}
+      pagesMetaById={pagesMetaById}
+      mergeBar={mergeBar}
+      onSelectQuestion={selectQuestion}
+      onDeselectQuestion={deselectQuestion}
+      onChangeRect={updateQuestionRect}
+      onCreateQuestion={createQuestionFromRect}
+      onMerge={handleMerge}
+      onUnmerge={() => {
+        if (activeQuestionId) handleUnmerge(activeQuestionId);
+      }}
+      getPageImageSrc={getPageImageSrc}
+    />
+  );
+
   return (
     <>
       <div className={styles.workbench}>
-        <Splitter className={styles.splitter}>
-          <Splitter.Panel min="30%" max="80%">
-            <div className={styles.leftPanel}>
-              {!pages.length ? (
-                <UploadCard onHandleFiles={handleFiles} />
-              ) : (
-                <PageViewer
-                  pages={pages}
-                  currentPageIndex={currentPageIndex}
-                  onSwitchPage={switchPage}
-                  onSelectPage={setCurrentPageIndex}
-                  pageSectionRefs={pageSectionRefs}
-                  thumbRefs={thumbRefs}
-                  selectedQuestionIds={selectedQuestionIds}
-                  questionsByPageId={questionsByPageId}
-                  pagesMetaById={pagesMetaById}
-                  mergeBar={mergeBar}
-                  onSelectQuestion={selectQuestion}
-                  onDeselectQuestion={deselectQuestion}
-                  onChangeRect={updateQuestionRect}
-                  onCreateQuestion={createQuestionFromRect}
-                  onMerge={handleMerge}
-                  onUnmerge={() => {
-                    if (activeQuestionId) handleUnmerge(activeQuestionId);
-                  }}
-                  getPageImageSrc={getPageImageSrc}
-                />
-              )}
-            </div>
-          </Splitter.Panel>
-          <Splitter.Panel min={280} max="60%" defaultSize={420}>
-            <QuestionList
-              questionPreviewList={questionPreviewList}
-              selectedQuestionIds={selectedQuestionIds}
-              onLocateQuestion={locateQuestion}
-              onToggleSelect={(id, pageIndex) =>
-                selectQuestion(id, pageIndex, true)
-              }
-              onDeleteQuestion={deleteQuestion}
-              onUnmergeQuestion={handleUnmerge}
-              onDeselectQuestion={deselectQuestion}
-            />
-          </Splitter.Panel>
-        </Splitter>
+        {/* 题目列表区域可经卡片头部最右按钮整体隐藏，隐藏后画布占满全宽 */}
+        {listOpen ? (
+          <Splitter className={styles.splitter}>
+            <Splitter.Panel min="30%" max="80%">
+              <div className={styles.leftPanel}>{pagePanel}</div>
+            </Splitter.Panel>
+            <Splitter.Panel min={280} max="60%" defaultSize={420}>
+              <QuestionList
+                questionPreviewList={questionPreviewList}
+                selectedQuestionIds={selectedQuestionIds}
+                onLocateQuestion={locateQuestion}
+                onToggleSelect={(id, pageIndex) =>
+                  selectQuestion(id, pageIndex, true)
+                }
+                onDeleteQuestion={deleteQuestion}
+                onUnmergeQuestion={handleUnmerge}
+                onDeselectQuestion={deselectQuestion}
+                onCollapse={() => setListOpen(false)}
+              />
+            </Splitter.Panel>
+          </Splitter>
+        ) : (
+          <div className={styles.leftPanel}>{pagePanel}</div>
+        )}
       </div>
-      {/* 右侧 Win10 风格导航栏（可收起），图标 + 悬停提示 */}
-      <aside className={cx(styles.sideNav, !navOpen && styles.sideNavHidden)}>
-        <Tooltip title="题目列表" placement="left">
+      {!listOpen ? (
+        <Tooltip title="显示题目列表" placement="left">
           <Button
-            className={styles.sideNavBtn}
-            type="text"
-            icon={<FileTextOutlined />}
-            onClick={() => history.push('/qieti/questions')}
+            className={styles.listShowTab}
+            type="primary"
+            icon={<DoubleLeftOutlined />}
+            onClick={() => setListOpen(true)}
           />
         </Tooltip>
-        <Tooltip title="上传记录" placement="left">
-          <Button
-            className={styles.sideNavBtn}
-            type="text"
-            icon={<ProfileOutlined />}
-            onClick={() => history.push('/qieti/records')}
-          />
-        </Tooltip>
+      ) : null}
+      {/* 右侧 Win10 风格导航栏（可收起）：页面切换组 /qieti/ 三页共用，以下为本页专属操作 */}
+      <SideNav active="cut">
         <Tooltip
           title={`一题多框合并：${mergeFragments ? '开' : '关'}`}
           placement="left"
         >
           <Button
-            className={cx(
-              styles.sideNavBtn,
-              mergeFragments && styles.sideNavBtnActive,
+            className={navCx(
+              navStyles.sideNavBtn,
+              mergeFragments && navStyles.sideNavBtnActive,
             )}
             type="text"
             icon={<ApartmentOutlined />}
             onClick={() => handleMergeToggle(!mergeFragments)}
           />
         </Tooltip>
-        <div className={styles.sideNavDivider} />
         <Tooltip title="自动识别题目" placement="left">
           <Button
-            className={styles.sideNavBtn}
+            className={navStyles.sideNavBtn}
             type="text"
             icon={<ScanOutlined />}
             onClick={() => runAutoDetect()}
@@ -973,7 +973,7 @@ export default function QietiCutPage() {
         </Tooltip>
         <Tooltip title="下载全部题目" placement="left">
           <Button
-            className={styles.sideNavBtn}
+            className={navStyles.sideNavBtn}
             type="text"
             icon={<DownloadOutlined />}
             onClick={downloadAllQuestionsMarkdown}
@@ -983,7 +983,7 @@ export default function QietiCutPage() {
         </Tooltip>
         <Tooltip title="保存题库" placement="left">
           <Button
-            className={styles.sideNavBtn}
+            className={navStyles.sideNavBtn}
             type="text"
             icon={<SaveOutlined />}
             onClick={saveToBank}
@@ -998,7 +998,7 @@ export default function QietiCutPage() {
             onConfirm={clearAll}
           >
             <Button
-              className={styles.sideNavBtn}
+              className={navStyles.sideNavBtn}
               type="text"
               danger
               icon={<ClearOutlined />}
@@ -1006,26 +1006,7 @@ export default function QietiCutPage() {
             />
           </Popconfirm>
         </Tooltip>
-        <div className={styles.sideNavSpacer} />
-        <Tooltip title={navOpen ? '收起导航栏' : '展开导航栏'} placement="left">
-          <Button
-            className={styles.sideNavBtn}
-            type="text"
-            icon={navOpen ? <DoubleRightOutlined /> : <DoubleLeftOutlined />}
-            onClick={() => setNavOpen((v) => !v)}
-          />
-        </Tooltip>
-      </aside>
-      {!navOpen ? (
-        <Tooltip title="展开导航栏" placement="left">
-          <Button
-            className={styles.sideNavTab}
-            type="primary"
-            icon={<DoubleLeftOutlined />}
-            onClick={() => setNavOpen(true)}
-          />
-        </Tooltip>
-      ) : null}
+      </SideNav>
       {/* 合并/解除合并确认：内联面板（不用 antd Modal —— 当前环境弹层关闭动画
           事件不触发，确认框会滞留挡屏；内联渲染无传送门/动画，行为可靠） */}
       {pendingConfirm ? (

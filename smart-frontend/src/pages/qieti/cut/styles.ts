@@ -28,6 +28,13 @@ export const useStyles = createStyles(({ token, css }) => ({
     flex-direction: column;
     gap: ${token.margin}px;
   `,
+  /* 题目列表隐藏后的悬浮恢复按钮（位于侧边导航栏左侧） */
+  listShowTab: css`
+    position: fixed;
+    top: 64px;
+    right: calc(8px + var(--qieti-nav-w, 0px));
+    z-index: 1100;
+  `,
   viewerCard: css`
     flex: 1;
     min-width: 0;
@@ -242,53 +249,6 @@ export const useStyles = createStyles(({ token, css }) => ({
       background: ${token.colorPrimaryBgHover};
       border-color: ${token.colorPrimaryBorderHover};
     }
-  `,
-  /* Win10 风格右侧导航栏：贴边窄条、图标按钮、可滑出收起 */
-  sideNav: css`
-    position: fixed;
-    top: 56px;
-    right: 0;
-    bottom: 0;
-    width: 56px;
-    z-index: 1100;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    padding: ${token.paddingXS}px 0;
-    background: ${token.colorBgContainer};
-    border-left: 1px solid ${token.colorBorderSecondary};
-    transition: transform 0.25s ease;
-  `,
-  sideNavHidden: css`
-    transform: translateX(105%);
-  `,
-  sideNavBtn: css`
-    width: 40px;
-    height: 40px;
-    font-size: 18px;
-  `,
-  sideNavBtnActive: css`
-    color: ${token.colorPrimary};
-    background: ${token.colorPrimaryBg};
-    &:hover {
-      background: ${token.colorPrimaryBgHover};
-    }
-  `,
-  sideNavDivider: css`
-    width: 32px;
-    height: 1px;
-    background: ${token.colorBorderSecondary};
-    margin: 4px 0;
-  `,
-  sideNavSpacer: css`
-    flex: 1;
-  `,
-  sideNavTab: css`
-    position: fixed;
-    top: 64px;
-    right: 0;
-    z-index: 1100;
   `,
   mathImage: css`
     max-width: 100%;
