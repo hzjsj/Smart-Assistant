@@ -58,7 +58,8 @@ const mineruTheme = {
 function TaskManagement() {
   const [folded, setFolded] = useState(false);
   const [flyoutOpen, setFlyoutOpen] = useState(false);
-  const [activeNavKey, setActiveNavKey] = useState('tasks');
+  // 默认落在"智能解析"（新解析）页：首次打开与刷新后都是它
+  const [activeNavKey, setActiveNavKey] = useState('new');
   const [width, setWidth] = useState(() =>
     Math.min(260, Math.round(window.innerWidth * 0.4)),
   );
@@ -198,7 +199,11 @@ function TaskManagement() {
         {activeNavKey === 'new' ? (
           <UploadView onViewTasks={() => setActiveNavKey('tasks')} />
         ) : (
-          <TaskTable search={search} statusFilter={statusFilter} />
+          <TaskTable
+            search={search}
+            statusFilter={statusFilter}
+            favoriteOnly={activeNavKey === 'favorites'}
+          />
         )}
       </main>
     </Flex>

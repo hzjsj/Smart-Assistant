@@ -6,6 +6,8 @@ import {
   FileWordOutlined,
   InfoCircleFilled,
   LoadingOutlined,
+  StarFilled,
+  StarOutlined,
 } from '@ant-design/icons';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -22,7 +24,11 @@ import {
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import { useEffect, useMemo, useState } from 'react';
 import type { MineruTask } from './service';
-import { deleteMineruTasks, listMineruTasks } from './service';
+import {
+  deleteMineruTasks,
+  listMineruTasks,
+  toggleMineruFavorite,
+} from './service';
 import './task.css';
 
 export type StatusFilter = 'all' | 'success' | 'failed';
@@ -30,6 +36,8 @@ export type StatusFilter = 'all' | 'success' | 'failed';
 interface TaskTableProps {
   search: string;
   statusFilter: StatusFilter;
+  /** 我的收藏视图：只显示已收藏任务 */
+  favoriteOnly?: boolean;
 }
 
 const PAGE_SIZE = 10;
@@ -88,7 +96,11 @@ const DOWNLOAD_MIME: Record<'word' | 'md', { suffix: string; type: string }> = {
   md: { suffix: '.md', type: 'text/markdown' },
 };
 
-export default function TaskTable({ search, statusFilter }: TaskTableProps) {
+export default function TaskTable({
+  search,
+  statusFilter,
+  favoriteOnly = false,
+}: TaskTableProps) {
   const { message } = App.useApp();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -106,12 +118,12 @@ export default function TaskTable({ search, statusFilter }: TaskTableProps) {
   }, [search]);
 
   useEffect(() => {
-    setPage(1); // 切换状态筛选回到第一页
-  }, [statusFilter]);
+    setPage(1); // 切换状态筛选/收藏视图回到第一页
+  }, [statusFilter, favoriteOnly]);
 
   const queryKey = [
     'mineru-tasks',
-    { page, search: debouncedSearch, statusFilter },
+    { page, search: debouncedSearch, statusFilter, favoriteOnly },
   ];
   const { data, isLoading, isFetching } = useQuery({
     queryKey,
@@ -121,6 +133,7 @@ export default function TaskTable({ search, statusFilter }: TaskTableProps) {
         pageSize: PAGE_SIZE,
         original_name: debouncedSearch.trim() || undefined,
         state: STATE_FILTER_MAP[statusFilter] as 'done' | 'error' | undefined,
+        favorite: favoriteOnly || undefined,
       }),
     placeholderData: (prev) => prev, // 翻页/筛选时保留旧数据避免闪空
     // 存在"解析中"任务时每 8s 自动轮询，全部终态后停止
@@ -132,6 +145,16 @@ export default function TaskTable({ search, statusFilter }: TaskTableProps) {
 
   const tasks = useMemo(() => data?.data ?? [], [data]);
   const total = data?.total ?? 0;
+
+  const handleToggleFavorite = async (record: MineruTask) => {
+    try {
+      const res = await toggleMineruFavorite(record.id);
+      message.success(res.favorite ? '已收藏' : '已取消收藏');
+      queryClient.invalidateQueries({ queryKey: ['mineru-tasks'] });
+    } catch (e) {
+      message.error(`操作失败：${e instanceof Error ? e.message : '请重试'}`);
+    }
+  };
 
   const handleRemove = async (id: number) => {
     setRemovingId(id);
@@ -228,7 +251,7 @@ export default function TaskTable({ search, statusFilter }: TaskTableProps) {
     {
       title: '操作',
       key: 'actions',
-      width: 200,
+      width: 240,
       render: (_, record) => {
         // 预览优先 HTML（extra_formats 原生生成，自包含样式），历史任务回落 Markdown
         const previewUrl = record.oss_html_url || record.oss_md_url;
@@ -279,6 +302,15 @@ export default function TaskTable({ search, statusFilter }: TaskTableProps) {
                   record.oss_md_url &&
                   handleDownload(record, 'md', record.oss_md_url)
                 }
+              />
+            </Tooltip>
+            <Tooltip title={record.favorite ? '取消收藏' : '收藏'}>
+              <Button
+                type="text"
+                size="small"
+                className={`mu-action-btn${record.favorite ? ' mu-action-faved' : ''}`}
+                icon={record.favorite ? <StarFilled /> : <StarOutlined />}
+                onClick={() => handleToggleFavorite(record)}
               />
             </Tooltip>
             <Popconfirm

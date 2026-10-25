@@ -18,6 +18,8 @@ export interface MineruTask {
   mineru_task_id: string | null;
   /** submitted(解析中) / done(成功) / error(失败) */
   mineru_state: string | null;
+  /** 是否收藏 */
+  favorite: boolean;
   created_at: string;
 }
 
@@ -30,6 +32,8 @@ export interface MineruTaskListParams {
   original_name?: string;
   /** 状态筛选 */
   state?: MineruTaskState;
+  /** 收藏筛选：true 仅收藏，不传为全部 */
+  favorite?: boolean;
 }
 
 export interface MineruTaskListResp {
@@ -44,6 +48,16 @@ export async function listMineruTasks(
 ): Promise<MineruTaskListResp> {
   return request<MineruTaskListResp>(`${API_BASE}/tasks`, {
     params,
+    skipErrorHandler: true,
+  });
+}
+
+/** 收藏/取消收藏任务，返回切换后的状态 */
+export async function toggleMineruFavorite(
+  taskId: number,
+): Promise<{ id: number; favorite: boolean }> {
+  return request(`${API_BASE}/tasks/${taskId}/favorite`, {
+    method: 'POST',
     skipErrorHandler: true,
   });
 }
