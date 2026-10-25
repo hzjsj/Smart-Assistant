@@ -27,6 +27,7 @@ def _to_dict(record: FileRecord) -> dict:
         "oss_word_url": record.oss_word_url,
         "oss_images": record.oss_images,
         "zip_source": record.zip_source,
+        "oss_html_url": record.oss_html_url,
         "mineru_task_id": record.mineru_task_id,
         "mineru_state": record.mineru_state,
         "mineru_zip_url": record.mineru_zip_url,
@@ -94,6 +95,28 @@ def get_file_records(db: Session, page: int = 1, page_size: int = 10,
     return _to_file_list(items, total)
 
 
+def get_mineru_tasks(db: Session, page: int = 1, page_size: int = 10,
+                     original_name: str | None = None,
+                     state: str | None = None,
+                     uid_filter: str | None = None) -> dict:
+    """MinerU 解析任务列表（仅 ``mineru_task_id`` 非空的记录），创建时间倒序。
+
+    供 ``GET /api/mineru/tasks`` 使用：与 get_file_records 的区别是
+    过滤掉普通文档/知识库上传，并支持按 ``mineru_state`` 筛选。
+    """
+    query = db.query(FileRecord).filter(FileRecord.mineru_task_id.isnot(None))
+    if original_name:
+        query = query.filter(FileRecord.original_name.ilike(f"%{original_name}%"))
+    if state:
+        query = query.filter(FileRecord.mineru_state == state)
+    if uid_filter:
+        query = query.filter(FileRecord.uid == uid_filter)
+    total = query.count()
+    offset = (page - 1) * page_size
+    items = query.order_by(FileRecord.created_at.desc()).offset(offset).limit(page_size).all()
+    return _to_file_list(items, total)
+
+
 def update_file_record(db: Session, file_id: int, data: FileUpdate) -> FileRecord | None:
     record = get_file_record(db, file_id)
     if not record:
@@ -127,6 +150,7 @@ def update_file_record_mineru(db: Session, file_id: int, *,
                               mineru_zip_url: str = None,
                               oss_md_url: str = None,
                               oss_word_url: str = None,
+                              oss_html_url: str = None,
                               oss_images: str = None,
                               download_url: str = None,
                               md_download_url: str = None) -> FileRecord | None:
@@ -137,6 +161,8 @@ def update_file_record_mineru(db: Session, file_id: int, *,
         record.mineru_state = mineru_state
     if mineru_zip_url is not None:
         record.mineru_zip_url = mineru_zip_url
+    if oss_html_url is not None:
+        record.oss_html_url = oss_html_url
     if oss_md_url is not None:
         record.oss_md_url = oss_md_url
     if oss_word_url is not None:

@@ -24,6 +24,7 @@ class FileRecord(Base):
         comment="OSS上的图片地址列表,逗号分隔（变长，可能很多张图）",
     )
     zip_source = Column(String(500), nullable=True, comment="来源zip文件名")
+    oss_html_url = Column(String(500), nullable=True, comment="OSS上的HTML预览文件地址（extra_formats 生成）")
     mineru_task_id = Column(String(100), nullable=True, index=True, comment="MinerU 任务ID")
     mineru_state = Column(String(20), nullable=True, comment="MinerU 任务状态: submitted/done/error")
     mineru_zip_url = Column(String(1000), nullable=True, comment="MinerU 返回的 zip 下载地址")

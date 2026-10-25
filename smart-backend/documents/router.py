@@ -430,9 +430,9 @@ def _process_mineru_upload(file_path: str, ext: str, original_name: str,
             },
         }
 
-    except Exception:
+    except Exception as e:
         traceback.print_exc()
-        return {"status": "error", "data": {"filename": original_name, "download_url": None}}
+        return {"status": "error", "data": {"filename": original_name, "download_url": None}, "errorMessage": str(e)}
     finally:
         db.close()
         if os.path.exists(file_path):

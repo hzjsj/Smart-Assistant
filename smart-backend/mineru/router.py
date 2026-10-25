@@ -15,16 +15,18 @@ import json
 
 import httpx
 import requests
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Query
 
-from database import get_sync_db
+from database import get_db, get_sync_db
 from auth import get_current_user
 from documents import crud
 
 from mineru.schemas import CallbackRequest, SubmitRequest
 from mineru.service import (
+    ensure_html_preview,
     handle_mineru_done,
     submit_task_to_mineru,
+    sync_submitted_tasks,
 )
 from mineru.service import get_mineru_config
 
@@ -105,3 +107,30 @@ async def callback(data: CallbackRequest):
         db.close()
 
     return {"msg": "ok"}
+
+
+@router.get("/tasks", summary="MinerU 解析任务列表（分页，供 /mineru 任务管理页）")
+def list_mineru_tasks(
+    current: float = Query(1, description="当前的页码"),
+    pageSize: float = Query(10, description="页面的容量"),
+    original_name: str | None = Query(None, description="任务名称（模糊搜索）"),
+    state: str | None = Query(
+        None, description="状态筛选: submitted(解析中) / done(成功) / error(失败)"
+    ),
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    # 只返回当前登录用户自己提交的 MinerU 任务（mineru_task_id 非空）
+    result = crud.get_mineru_tasks(
+        db,
+        int(current),
+        int(pageSize),
+        original_name=original_name,
+        state=state,
+        uid_filter=current_user.userid,
+    )
+    # 轮询兜底：后台向 MinerU 同步 submitted 任务的真实状态，不阻塞本次响应
+    sync_submitted_tasks(result.get("data") or [])
+    # 历史任务补齐：done 且无 HTML 预览的记录后台用 pandoc 生成（新任务原生有）
+    ensure_html_preview(result.get("data") or [])
+    return result

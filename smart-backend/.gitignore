@@ -11,3 +11,4 @@ venv/
 # 本地数据
 *.db
 uploads/
+.chroma/*
