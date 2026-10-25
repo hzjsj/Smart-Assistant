@@ -18,6 +18,8 @@ export interface MineruTask {
   mineru_task_id: string | null;
   /** submitted(解析中) / done(成功) / error(失败) */
   mineru_state: string | null;
+  /** 解析失败原因（mineru_state=error 时有值） */
+  mineru_error: string | null;
   /** 是否收藏 */
   favorite: boolean;
   created_at: string;

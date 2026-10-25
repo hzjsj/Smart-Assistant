@@ -190,7 +190,8 @@ export default function TaskTable({
     }
   };
 
-  const stateCell = (state: string | null) => {
+  const stateCell = (record: MineruTask) => {
+    const state = record.mineru_state;
     if (state === 'done') {
       return (
         <Space size={6} className="mu-status mu-status-success">
@@ -200,11 +201,25 @@ export default function TaskTable({
       );
     }
     if (state === 'error') {
+      // 失败原因记录在 mineru_error，hover 查看完整内容
       return (
-        <Space size={6} className="mu-status mu-status-failed">
-          <InfoCircleFilled />
-          <span>解析失败</span>
-        </Space>
+        <Tooltip title={record.mineru_error || '未知原因'}>
+          <Flex vertical gap={2} className="mu-status mu-status-failed">
+            <Space size={6}>
+              <InfoCircleFilled />
+              <span>解析失败</span>
+            </Space>
+            {record.mineru_error && (
+              <Typography.Text
+                type="secondary"
+                ellipsis
+                className="mu-status-reason"
+              >
+                {record.mineru_error}
+              </Typography.Text>
+            )}
+          </Flex>
+        </Tooltip>
       );
     }
     return (
@@ -234,7 +249,7 @@ export default function TaskTable({
       title: '状态',
       dataIndex: 'mineru_state',
       width: 140,
-      render: (_, record) => stateCell(record.mineru_state),
+      render: (_, record) => stateCell(record),
     },
     {
       title: '类型',

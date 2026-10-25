@@ -750,3 +750,10 @@ html.mu-dragging * {
 .mu-status-parsing {
   color: var(--mu-primary);
 }
+
+/* 解析失败原因（状态列小字，hover Tooltip 看全文） */
+.mu-status-reason {
+  max-width: 120px;
+  font-size: 12px;
+  line-height: 1.3;
+}
