@@ -16,6 +16,7 @@ import traceback
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from threading import Lock
 from typing import Optional
 from urllib.parse import urlparse
 
@@ -304,13 +305,30 @@ def process_mineru_zip(
 
 
 # ─── 后台处理：联动 FileRecord ────────────────────────────────────────
+# 回调与轮询共用的结果处理锁：同一记录只允许一个线程下载、转存结果包。
+_result_processing_ids: set[int] = set()
+_result_processing_lock = Lock()
+
+
 def handle_mineru_done(record_id: int, full_zip_url: str):
-    """后台线程：下载 MinerU zip → 处理 → 更新 ``FileRecord``。"""
+    """后台线程：下载 MinerU zip → 处理 → 更新 ``FileRecord``（幂等防重入）。"""
+    with _result_processing_lock:
+        if record_id in _result_processing_ids:
+            print(f"[MinerU] 记录 {record_id} 正在处理，跳过重复结果下载")
+            return
+        _result_processing_ids.add(record_id)
+
     db = get_sync_db()
     try:
         record = crud.get_file_record(db, record_id)
-        original_name = record.original_name if record else "full"
-        result = process_mineru_zip(full_zip_url, str(record_id), original_name)
+        if not record:
+            print(f"[MinerU] 记录 {record_id} 不存在，跳过结果处理")
+            return
+        if record.mineru_state == "done":
+            print(f"[MinerU] 记录 {record_id} 已完成，跳过重复结果下载")
+            return
+
+        result = process_mineru_zip(full_zip_url, str(record_id), record.original_name)
         if result:
             crud.update_file_record_mineru(
                 db, record_id,
@@ -336,6 +354,8 @@ def handle_mineru_done(record_id: int, full_zip_url: str):
         )
     finally:
         db.close()
+        with _result_processing_lock:
+            _result_processing_ids.discard(record_id)
 
 
 # ─── 轮询兜底：主动向 MinerU 同步 submitted 任务状态 ──────────────────

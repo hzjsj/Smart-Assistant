@@ -10,8 +10,9 @@ Open WebUI 配置 ``MINERU_API_URL={BASE}/api/mineru/proxy`` 后无感知接入�
 - ``GET /zip/{record_id}``        返回结果 zip（full.md，图片已是 OSS 永久外链）
 - 其余任意路径                     透传 https://mineru.net/api/v4/* 保底兼容
 
-鉴权：``Authorization: Bearer`` 须等于 ``.env`` 的 ``MINERU_TOKEN``（Open WebUI
-原生携带）。batch 与记录的关联存内存映射（重启丢失仅导致重新上传）。
+鉴权：申请上传 URL 与透传接口校验 ``Authorization: Bearer``；预签名上传、轮询、
+结果下载不鉴权（Open WebUI 这些请求不携带 API Key）。
+batch 与记录的关联存内存映射（重启丢失仅导致重新上传）。
 """
 
 import os
@@ -96,8 +97,7 @@ async def apply_upload_urls(request: Request):
 
 @router.put("/upload/{batch_id}/{index}")
 async def receive_upload(batch_id: str, index: int, request: Request):
-    """② 接收 Open WebUI PUT 的文件字节 → 走自有上传处理 → 记录关联。"""
-    _check_token(request)
+    """② 接收预签名 URL 的文件字节（无 Authorization），复用自有上传处理。"""
     batch = _BATCHES.get(batch_id)
     if batch is None:
         raise HTTPException(status_code=404, detail="Unknown batch (服务可能已重启，请重新申请)")
@@ -145,9 +145,8 @@ _STATE_MAP = {"submitted": "running", "done": "done", "error": "failed"}
 
 
 @router.get("/extract-results/batch/{batch_id}")
-async def poll_batch(batch_id: str, request: Request):
-    """③ 轮询：按 MinerU 响应格式聚合各文件状态，done 改写 full_zip_url。"""
-    _check_token(request)
+async def poll_batch(batch_id: str):
+    """③ 轮询：按 MinerU 响应格式聚合状态，不要求 Authorization。"""
     batch = _BATCHES.get(batch_id)
     if batch is None:
         raise HTTPException(status_code=404, detail="Unknown batch (服务可能已重启)")
@@ -194,9 +193,8 @@ async def poll_batch(batch_id: str, request: Request):
 
 
 @router.get("/zip/{record_id}")
-async def download_zip(record_id: int, request: Request):
-    """④ 结果 zip：取已转存的 oss_md_url（图片已是 OSS 外链）打包返回。"""
-    _check_token(request)
+async def download_zip(record_id: int):
+    """④ 结果 zip：通过公开结果链接下载，不要求 Authorization。"""
     db = get_sync_db()
     try:
         record = crud.get_file_record(db, record_id)

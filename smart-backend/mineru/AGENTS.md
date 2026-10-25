@@ -138,7 +138,7 @@ Open WebUI 配置 `MINERU_API_URL={MINERU_PROXY_PUBLIC_BASE}/api/mineru/proxy`�
 | GET /zip/{record_id} | 取 oss_md_url 打包（图片已 OSS 外链）；异常 302 回退原始 zip |
 | 其余路径 | 透传 mineru.net/api/v4/*（归一化去 api/v4 前缀，Authorization 透传） |
 
-- 鉴权：`Authorization: Bearer` == MINERU_TOKEN，否则 401
+- 鉴权：仅申请上传 URL 和透传接口要求 `Authorization: Bearer` == MINERU_TOKEN；预签名上传、轮询、结果下载不鉴权（Open WebUI 这些请求不携带 API Key）
 - batch↔记录关联存内存 `_BATCHES`（重启丢失仅导致 Open WebUI 重新上传，可接受）
 - 配置 `MINERU_PROXY_PUBLIC_BASE`：Open WebUI 可达的本服务地址（.env）
 
