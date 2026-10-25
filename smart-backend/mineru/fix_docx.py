@@ -15,7 +15,9 @@
 import hashlib
 import io
 import json
+import os
 import re
+import shutil
 import zipfile
 from pathlib import Path
 
@@ -68,7 +70,9 @@ def fix_docx_image_sizes(
     layout = json.loads(Path(layout_json_path).read_text(encoding="utf-8"))
     images = _collect_images(layout)
     if not images:
-        raise ValueError("layout.json 中未找到任何带 image_path+bbox 的图片块")
+        # 纯文本文档（无图片块）是正常场景：不做修改，原样复制后返回
+        shutil.copyfile(docx_path, output_path)
+        return []
 
     # 版心宽（超宽兜底）：取第一页宽 - 两侧边距
     pdf_info = layout.get("pdf_info") or [{}]
@@ -170,3 +174,88 @@ def fix_docx_image_sizes(
         zin.close()
 
     return changes
+
+
+# 合并 Word 的格式化模板（A4 公文版式/默认字体/标题样式）；缺失时跳过格式化不阻断
+TEMPLATE_DOCX = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "utils", "template.docx"
+)
+
+
+def apply_template(docx_path: str, template_path: str) -> None:
+    """以模板样式格式化 docx（原地重写包内三个 XML），单任务与批量合并共用。
+
+    - styles.xml：模板为底（默认字体/标题样式 1,2,3... 生效，ID 体系与
+      MinerU docx 同源），再追加模板缺失的分片样式（FirstParagraph/SourceCode 等）
+    - document.xml：body 末尾 sectPr 替换为模板的（A4 页面与页边距）
+    - theme1.xml：整体替换为模板主题——样式表里的字体是主题引用
+      （minorHAnsi/minorEastAsia），不换主题则实际字体仍是 MinerU 的
+      （Aptos/等线），模板字体（Calibri/宋体）不会生效
+    - numbering 不动（保留列表编号）
+    """
+    from lxml import etree
+
+    W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+    with zipfile.ZipFile(template_path) as zt:
+        tpl_styles = etree.fromstring(zt.read("word/styles.xml"))
+        tpl_sectpr = etree.fromstring(zt.read("word/document.xml")).find(f"{{{W}}}body/{{{W}}}sectPr")
+        if tpl_sectpr is not None:
+            tpl_sectpr = etree.fromstring(etree.tostring(tpl_sectpr))
+        tpl_theme = (
+            zt.read("word/theme/theme1.xml")
+            if "word/theme/theme1.xml" in zt.namelist() else None
+        )
+
+    zin = zipfile.ZipFile(docx_path)
+    styles = etree.fromstring(zin.read("word/styles.xml"))
+    doc_xml = etree.fromstring(zin.read("word/document.xml"))
+
+    # 追加模板缺失的分片样式（含 basedOn 链上的父样式，一并补齐）。
+    # 判重按 styleId（元素按 ID 引用样式，保 ID 唯一引用才有效；若按官方
+    # 建议的 name 判重，同名不同 ID 的样式不会被追加，引用会静默失效）。
+    # 同名不同 ID 的追加会造成 Word 样式列表重名，仅打警告不阻断。
+    tpl_ids = {s.get(f"{{{W}}}styleId") for s in tpl_styles.findall(f"{{{W}}}style")}
+    tpl_names = {
+        s.find(f"{{{W}}}name").get(f"{{{W}}}val")
+        for s in tpl_styles.findall(f"{{{W}}}style")
+        if s.find(f"{{{W}}}name") is not None
+    }
+    appended: list[str] = []
+    for style in styles.findall(f"{{{W}}}style"):
+        if style.get(f"{{{W}}}styleId") not in tpl_ids:
+            name_el = style.find(f"{{{W}}}name")
+            name = name_el.get(f"{{{W}}}val") if name_el is not None else ""
+            if name and name in tpl_names:
+                print(f"[MinerU] 警告: 追加样式与模板同名 (name={name}, "
+                      f"id={style.get(f'{{{W}}}styleId')})，Word 样式列表可能出现重名")
+            tpl_styles.append(style)
+            appended.append(f"{name}({style.get(f'{{{W}}}styleId')})")
+
+    # 替换 body 末尾的 sectPr 为模板页面设置
+    body = doc_xml.find(f"{{{W}}}body")
+    old_sectpr = body.find(f"{{{W}}}sectPr")
+    if tpl_sectpr is not None:
+        if old_sectpr is not None:
+            body.replace(old_sectpr, tpl_sectpr)
+        else:
+            body.append(tpl_sectpr)
+
+    tmp_out = docx_path + ".tmp"
+    with zipfile.ZipFile(tmp_out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            if item.filename == "word/styles.xml":
+                data = etree.tostring(tpl_styles, xml_declaration=True, encoding="UTF-8", standalone=True)
+            elif item.filename == "word/document.xml":
+                data = etree.tostring(doc_xml, xml_declaration=True, encoding="UTF-8", standalone=True)
+            elif item.filename == "word/theme/theme1.xml" and tpl_theme is not None:
+                data = tpl_theme
+            else:
+                data = zin.read(item.filename)
+            zout.writestr(item, data, compress_type=item.compress_type)
+    zin.close()
+    shutil.move(tmp_out, docx_path)
+    detail = f"，补充: {', '.join(appended[:8])}" if appended else ""
+    print(f"[MinerU] 已套用模板 {os.path.basename(template_path)}: "
+          f"页面/边距/主题字体替换为模板，模板样式 {len(tpl_ids)} 项，"
+          f"补充分片样式 {len(appended)} 项{detail}")

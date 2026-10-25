@@ -24,7 +24,7 @@ from pypdf import PdfReader, PdfWriter
 from database import get_sync_db
 from documents import crud
 from documents.knowledge import extract_zip, find_md_files
-from mineru.fix_docx import fix_docx_image_sizes
+from mineru.fix_docx import TEMPLATE_DOCX, apply_template, fix_docx_image_sizes
 from mineru.service import _download_zip_robust, get_mineru_config
 
 # 平台限制：单文件 ≤200MB / ≤200 页；拆分留 5% 余量
@@ -183,65 +183,6 @@ def fetch_batch_state(batch_id: str) -> Optional[list[dict]]:
     except Exception:
         traceback.print_exc()
     return None
-
-
-# 合并 Word 的格式化模板（A4 公文版式/默认字体/标题样式）；缺失时跳过格式化不阻断
-TEMPLATE_DOCX = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "utils", "template.docx"
-)
-
-
-def apply_template(docx_path: str, template_path: str) -> None:
-    """以模板样式格式化合并后的 docx（原地重写包内两个 XML）。
-
-    - styles.xml：模板为底（默认字体/标题样式 1,2,3... 生效，ID 体系与
-      MinerU docx 同源），再追加模板缺失的分片样式（FirstParagraph/SourceCode 等）
-    - document.xml：body 末尾 sectPr 替换为模板的（A4 页面与页边距）
-    - numbering 不动（保留分片的列表编号）
-    """
-    import shutil as _shutil
-    from lxml import etree
-
-    ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
-    W = ns["w"]
-
-    with zipfile.ZipFile(template_path) as zt:
-        tpl_styles = etree.fromstring(zt.read("word/styles.xml"))
-        tpl_sectpr = etree.fromstring(zt.read("word/document.xml")).find(f"{{{W}}}body/{{{W}}}sectPr")
-        if tpl_sectpr is not None:
-            tpl_sectpr = etree.fromstring(etree.tostring(tpl_sectpr))
-
-    zin = zipfile.ZipFile(docx_path)
-    styles = etree.fromstring(zin.read("word/styles.xml"))
-    doc_xml = etree.fromstring(zin.read("word/document.xml"))
-
-    # 追加模板缺失的分片样式（含 basedOn 链上的父样式，一并补齐）
-    tpl_ids = {s.get(f"{{{W}}}styleId") for s in tpl_styles.findall(f"{{{W}}}style")}
-    for style in styles.findall(f"{{{W}}}style"):
-        if style.get(f"{{{W}}}styleId") not in tpl_ids:
-            tpl_styles.append(style)
-
-    # 替换 body 末尾的 sectPr 为模板页面设置
-    body = doc_xml.find(f"{{{W}}}body")
-    old_sectpr = body.find(f"{{{W}}}sectPr")
-    if tpl_sectpr is not None:
-        if old_sectpr is not None:
-            body.replace(old_sectpr, tpl_sectpr)
-        else:
-            body.append(tpl_sectpr)
-
-    tmp_out = docx_path + ".tmp"
-    with zipfile.ZipFile(tmp_out, "w", zipfile.ZIP_DEFLATED) as zout:
-        for item in zin.infolist():
-            if item.filename == "word/styles.xml":
-                data = etree.tostring(tpl_styles, xml_declaration=True, encoding="UTF-8", standalone=True)
-            elif item.filename == "word/document.xml":
-                data = etree.tostring(doc_xml, xml_declaration=True, encoding="UTF-8", standalone=True)
-            else:
-                data = zin.read(item.filename)
-            zout.writestr(item, data, compress_type=item.compress_type)
-    zin.close()
-    _shutil.move(tmp_out, docx_path)
 
 
 def merge_docx(docx_paths: list[str], out_path: str) -> None:

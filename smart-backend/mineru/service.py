@@ -29,7 +29,7 @@ from documents.knowledge import (
     find_md_files,
     fix_md_image_paths,
 )
-from mineru.fix_docx import EMU_PER_PT, fix_docx_image_sizes
+from mineru.fix_docx import EMU_PER_PT, TEMPLATE_DOCX, apply_template, fix_docx_image_sizes
 from utils.oss_upload import (
     convert_md_file_to_docx,
     upload_bytes_to_oss,
@@ -211,6 +211,9 @@ def process_mineru_zip(
                     f"[MinerU] {task_id}: {c['image_path']} {old_pt} -> "
                     f"{c['new_wh_pt'][0]:.0f}x{c['new_wh_pt'][1]:.0f}pt"
                 )
+            # 与批量合并一致：上传前套用项目模板（A4 版式/字体/标题样式）
+            if os.path.exists(TEMPLATE_DOCX):
+                apply_template(fixed_docx, TEMPLATE_DOCX)
             oss_word_key = f"mineru/docx/{timestamp}/{name_base}.docx"
             oss_word_url = upload_to_oss(fixed_docx, oss_word_key)["url"]
         else:
