@@ -15,6 +15,7 @@ Open WebUI 配置 ``MINERU_API_URL={BASE}/api/mineru/proxy`` 后无感知接入�
 """
 
 import os
+import re
 import tempfile
 import uuid
 from datetime import datetime
@@ -44,10 +45,24 @@ def _public_base() -> str:
 
 
 def _check_token(request: Request) -> None:
+    """校验 Bearer token。
+
+    Open WebUI 各版本的头格式不一（Bearer x / bearer x / Token x / 裸 token），
+    统一做宽松解析：取 scheme 后的裸值与 MINERU_TOKEN 比对。错误信息带上收到的
+    头片段，便于排查 Open WebUI 后台配置的 key 与 .env 不一致的问题。
+    """
     cfg = get_mineru_config()
-    auth = request.headers.get("authorization") or ""
-    if auth != f"Bearer {cfg['token']}":
-        raise HTTPException(status_code=401, detail="Invalid API token")
+    auth = (request.headers.get("authorization") or "").strip()
+    m = re.match(r"^(\S+)\s+(.+)$", auth)
+    provided = m.group(2).strip() if m else auth  # 有 scheme 取值，否则整串视为 token
+    if provided and provided == cfg["token"]:
+        return
+    hint = f"收到 Authorization={auth[:20]}... " if auth else "收到请求无 Authorization 头 "
+    raise HTTPException(
+        status_code=401,
+        detail=f"Invalid API token. {hint}— 请确认 Open WebUI 的 MINERU_API_KEY "
+        "与后端 .env 的 MINERU_TOKEN 完全一致",
+    )
 
 
 @router.post("/file-urls/batch")
