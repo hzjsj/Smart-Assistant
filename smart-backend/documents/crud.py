@@ -30,6 +30,8 @@ def _to_dict(record: FileRecord) -> dict:
         "oss_html_url": record.oss_html_url,
         "favorite": bool(record.favorite),
         "mineru_task_id": record.mineru_task_id,
+        "mineru_batch_id": record.mineru_batch_id,
+        "mineru_error": record.mineru_error,
         "mineru_state": record.mineru_state,
         "mineru_zip_url": record.mineru_zip_url,
         "created_at": _format_date(record.created_at),
@@ -51,7 +53,8 @@ def create_file_record(db: Session, original_name: str, saved_name: str,
                        oss_word_url: str = None, oss_images: str = None,
                        zip_source: str = None, mineru_task_id: str = None,
                        mineru_state: str = None,
-                       mineru_zip_url: str = None) -> FileRecord:
+                       mineru_zip_url: str = None,
+                       mineru_batch_id: str = None) -> FileRecord:
     record = FileRecord(
         original_name=original_name,
         saved_name=saved_name,
@@ -68,6 +71,7 @@ def create_file_record(db: Session, original_name: str, saved_name: str,
         mineru_task_id=mineru_task_id,
         mineru_state=mineru_state,
         mineru_zip_url=mineru_zip_url,
+        mineru_batch_id=mineru_batch_id,
     )
     db.add(record)
     db.commit()
@@ -106,7 +110,10 @@ def get_mineru_tasks(db: Session, page: int = 1, page_size: int = 10,
     供 ``GET /api/mineru/tasks`` 使用：与 get_file_records 的区别是
     过滤掉普通文档/知识库上传，并支持按 ``mineru_state`` / ``favorite`` 筛选。
     """
-    query = db.query(FileRecord).filter(FileRecord.mineru_task_id.isnot(None))
+    query = db.query(FileRecord).filter(
+        FileRecord.mineru_task_id.isnot(None)
+        | FileRecord.mineru_batch_id.isnot(None)
+    )
     if original_name:
         query = query.filter(FileRecord.original_name.ilike(f"%{original_name}%"))
     if state:
@@ -162,7 +169,9 @@ def get_file_record_by_mineru_task_id(db: Session, task_id: str) -> FileRecord |
 
 def update_file_record_mineru(db: Session, file_id: int, *,
                               mineru_state: str = None,
+                              mineru_error: str = None,
                               mineru_zip_url: str = None,
+                              mineru_batch_id: str = None,
                               oss_md_url: str = None,
                               oss_word_url: str = None,
                               oss_html_url: str = None,
@@ -174,8 +183,14 @@ def update_file_record_mineru(db: Session, file_id: int, *,
         return None
     if mineru_state is not None:
         record.mineru_state = mineru_state
+        if mineru_state != "error":
+            record.mineru_error = None  # 非失败状态时清掉旧失败原因
+    if mineru_error is not None:
+        record.mineru_error = (mineru_error or "")[:1000]
     if mineru_zip_url is not None:
         record.mineru_zip_url = mineru_zip_url
+    if mineru_batch_id is not None:
+        record.mineru_batch_id = mineru_batch_id
     if oss_html_url is not None:
         record.oss_html_url = oss_html_url
     if oss_md_url is not None:

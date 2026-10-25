@@ -28,6 +28,8 @@ class FileRecord(Base):
     oss_html_url = Column(String(500), nullable=True, comment="OSS上的HTML预览文件地址（extra_formats 生成）")
     favorite = Column(Boolean, nullable=False, default=False, server_default=text("0"), comment="是否收藏")
     mineru_task_id = Column(String(100), nullable=True, index=True, comment="MinerU 任务ID")
+    mineru_batch_id = Column(String(100), nullable=True, comment="MinerU 批量任务ID（超限文件拆分场景）")
     mineru_state = Column(String(20), nullable=True, comment="MinerU 任务状态: submitted/done/error")
+    mineru_error = Column(String(1000), nullable=True, comment="解析失败原因")
     mineru_zip_url = Column(String(1000), nullable=True, comment="MinerU 返回的 zip 下载地址")
     created_at = Column(DateTime, default=datetime.now, comment="上传时间")

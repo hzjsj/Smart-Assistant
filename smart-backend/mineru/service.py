@@ -322,11 +322,15 @@ def handle_mineru_done(record_id: int, full_zip_url: str):
             )
             print(f"[MinerU] 记录 {record_id} 更新成功: oss_md_url={result['oss_md_url']}")
         else:
-            crud.update_file_record_mineru(db, record_id, mineru_state="error")
+            crud.update_file_record_mineru(
+                db, record_id, mineru_state="error", mineru_error="结果包处理失败"
+            )
             print(f"[MinerU] 记录 {record_id} zip 处理失败")
-    except Exception:
+    except Exception as e:
         traceback.print_exc()
-        crud.update_file_record_mineru(db, record_id, mineru_state="error")
+        crud.update_file_record_mineru(
+            db, record_id, mineru_state="error", mineru_error=f"结果处理异常: {e}"
+        )
     finally:
         db.close()
 
@@ -364,26 +368,62 @@ def _fetch_task_state(task_id: str) -> Optional[dict]:
 def sync_submitted_tasks(task_dicts: list[dict]) -> None:
     """后台向 MinerU 同步 submitted 任务的真实状态（fire-and-forget，不阻塞调用方）。
 
-    传入任务列表接口当前页的数据行；只处理 ``mineru_state == submitted`` 且有
-    ``mineru_task_id`` 的行。状态变化由前端轮询自然呈现（下一轮拉取可见）。
+    传入任务列表接口当前页的数据行；处理 ``mineru_state == submitted`` 的行：
+    - 单任务（有 ``mineru_task_id``）：查单任务状态，done 触发结果处理
+    - 批量任务（有 ``mineru_batch_id``，超限拆分场景）：查整批状态，
+      全部 done 触发合并处理，任一 failed 落库 error
+    状态变化由前端轮询自然呈现（下一轮拉取可见）。
     """
     pending = [
         t
         for t in task_dicts
         if t.get("mineru_state") == "submitted"
-        and t.get("mineru_task_id")
+        and (t.get("mineru_task_id") or t.get("mineru_batch_id"))
         and t.get("id") not in _syncing_ids
     ]
     if not pending:
         return
 
     def _run():
+        from mineru import batch as mineru_batch  # 延迟导入避免循环依赖
+
         for t in pending:
             record_id = t["id"]
-            task_id = t["mineru_task_id"]
             if record_id in _syncing_ids:
                 continue
             _syncing_ids.add(record_id)
+
+            # ── 批量任务（超限拆分）──
+            batch_id = t.get("mineru_batch_id")
+            if batch_id and not t.get("mineru_task_id"):
+                try:
+                    results = mineru_batch.fetch_batch_state(batch_id)
+                    if not results:
+                        continue
+                    states = [r.get("state") for r in results]
+                    if all(s == "done" for s in states):
+                        print(f"[MinerU] 轮询发现批量 {batch_id} 全部完成，触发合并处理")
+                        mineru_batch.handle_mineru_batch_done(record_id, results)
+                    elif any(s == "failed" for s in states):
+                        failed = next(r for r in results if r.get("state") == "failed")
+                        err_msg = f"分片 {failed.get('file_name', '')}: {failed.get('err_msg') or '解析失败'}"
+                        db = get_sync_db()
+                        try:
+                            crud.update_file_record_mineru(
+                                db, record_id, mineru_state="error", mineru_error=err_msg
+                            )
+                        finally:
+                            db.close()
+                        print(f"[MinerU] 轮询发现批量 {batch_id} 失败: {err_msg}")
+                    # waiting-file / pending / running / converting：等下一轮
+                except Exception:
+                    traceback.print_exc()
+                finally:
+                    _syncing_ids.discard(record_id)
+                continue
+
+            # ── 单任务 ──
+            task_id = t["mineru_task_id"]
             try:
                 state = _fetch_task_state(task_id)
                 if not state:
@@ -392,16 +432,15 @@ def sync_submitted_tasks(task_dicts: list[dict]) -> None:
                     print(f"[MinerU] 轮询发现任务 {task_id} 已完成，触发结果处理")
                     handle_mineru_done(record_id, state["full_zip_url"])
                 elif state.get("state") == "failed":
+                    err_msg = str(state.get("err_msg") or "解析失败")
                     db = get_sync_db()
                     try:
                         crud.update_file_record_mineru(
-                            db, record_id, mineru_state="error"
+                            db, record_id, mineru_state="error", mineru_error=err_msg
                         )
                     finally:
                         db.close()
-                    print(
-                        f"[MinerU] 轮询发现任务 {task_id} 失败: {state.get('err_msg')}"
-                    )
+                    print(f"[MinerU] 轮询发现任务 {task_id} 失败: {err_msg}")
                 # running / waiting 等中间态：不动，等下一轮
             except Exception:
                 traceback.print_exc()

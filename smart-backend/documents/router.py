@@ -396,6 +396,41 @@ def _process_mineru_upload(file_path: str, ext: str, original_name: str,
         file_size = os.path.getsize(file_path)
         saved_name = os.path.basename(file_path)
 
+        # 0. 超限（>200MB 或 >200 页）PDF：拆分后走批量上传流程，对外行为不变
+        from mineru import batch as mineru_batch
+
+        if mineru_batch.needs_split(file_path, ext):
+            parts_dir = os.path.join(os.path.dirname(file_path), f"parts_{timestamp}")
+            parts = mineru_batch.split_pdf(file_path, parts_dir)
+            batch_id, upload_urls = mineru_batch.create_batch_upload_task(
+                [os.path.basename(p) for p in parts]
+            )
+            for upload_url, part in zip(upload_urls, parts):
+                mineru_batch.upload_part(upload_url, part)
+            record = crud.create_file_record(
+                db=db,
+                original_name=original_name,
+                saved_name=saved_name,
+                file_path=file_path,
+                file_size=file_size,
+                download_url="",
+                uid=uid,
+                mineru_batch_id=batch_id,
+                mineru_state="submitted",
+            )
+            print(f"[MinerU] 超限文件已拆分为 {len(parts)} 片批量提交, batch_id={batch_id}")
+            return {
+                "status": "ok",
+                "data": {
+                    "id": record.id,
+                    "filename": original_name,
+                    "uid": uid,
+                    "mineru_batch_id": batch_id,
+                    "mineru_state": "submitted",
+                    "oss_url": None,
+                },
+            }
+
         # 1. 上传源文件到 OSS 获取公开 URL
         oss_key = f"mineru/{timestamp}/{saved_name}"
         oss_result = upload_to_oss(file_path, oss_key)

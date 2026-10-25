@@ -129,8 +129,10 @@ async def callback(data: CallbackRequest):
             loop.run_in_executor(None, handle_mineru_done, record.id, full_zip_url)
             print(f"[MinerU] 任务 {task_id} 处理完成，已提交后台处理")
         else:
-            err_msg = content_json.get("err_msg", "unknown error")
-            crud.update_file_record_mineru(db, record.id, mineru_state="error")
+            err_msg = str(content_json.get("err_msg") or "解析失败")
+            crud.update_file_record_mineru(
+                db, record.id, mineru_state="error", mineru_error=err_msg
+            )
             print(f"[MinerU] 任务 {task_id} 失败: {err_msg}")
     finally:
         db.close()
