@@ -113,6 +113,13 @@ export default [
     component: './shuban',
   },
   {
+    name: 'MinerU 解析',
+    icon: 'fileText',
+    path: '/mineru',
+    layout: false,
+    component: './mineru',
+  },
+  {
     path: '/',
     redirect: '/welcome',
   },

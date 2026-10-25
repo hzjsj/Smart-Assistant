@@ -54,5 +54,26 @@
     "formatter": {
       "quoteStyle": "single"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/pages/mineru/task.css"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noImportantStyles": "off"
+          },
+          "correctness": {
+            "noUnknownMediaFeatureName": "off"
+          },
+          "suspicious": {
+            "noDuplicateProperties": "off"
+          },
+          "style": {
+            "noDescendingSpecificity": "off"
+          }
+        }
+      }
+    }
+  ]
 }

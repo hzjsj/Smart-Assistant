@@ -1,0 +1,721 @@
+/* ===== smart 任务管理页还原样式 ===== */
+/* 色值统一引用 antd CSS 变量（ConfigProvider token 下发），特殊色仅在此处定义 */
+
+:root {
+  --sidebar-width: 260px;
+}
+
+:root,
+.mu-page,
+.mu-flyout-popover,
+.mu-filter-dropdown {
+  --mu-primary: var(--ant-color-primary, #0d53de);
+  --mu-active-blue-bg: rgba(41, 81, 242, 0.4);
+  --mu-success: #00b365;
+  --mu-warning: #ff8800;
+  --mu-text: var(--ant-color-text, #121316);
+  --mu-text-weak: var(--ant-color-text-tertiary, rgba(0, 0, 0, 0.35));
+  --mu-icon-gray: var(--ant-color-text-quaternary, #b4b6bc);
+  --mu-sidebar-bg: #f7f8fd;
+  --mu-blue-hover: var(--ant-color-primary-bg-hover, rgba(13, 83, 222, 0.06));
+  --mu-fill-hover: var(--ant-color-fill-tertiary, rgb(235 236 240));
+  --drag-line-bg: linear-gradient(
+    to right,
+    transparent 84%,
+    rgba(41, 81, 242, 0.4) 84%,
+    rgba(41, 81, 242, 0.4) 100%
+  );
+}
+
+/* ===== 滑入动画（还原 animate-slide-in） ===== */
+@keyframes mu-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mu-slide-in-top {
+  0% {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes mu-row-removing {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+
+@keyframes mu-star-pop {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    transform: scale(1.4) rotate(18deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.mu-slide-in {
+  animation: mu-slide-in 0.3s ease-out both;
+}
+
+.mu-slide-in-late {
+  animation: mu-slide-in 0.4s ease-out 0.12s both;
+}
+
+.mu-slide-in-top {
+  animation: mu-slide-in-top 0.35s ease-out both;
+}
+
+/* ===== 整体布局 ===== */
+.mu-page {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: #fff;
+  color: var(--mu-text);
+  font-size: 14px;
+  line-height: 1.5714;
+  letter-spacing: normal;
+}
+
+.mu-page,
+.mu-page * {
+  box-sizing: border-box;
+}
+
+.mu-sidebar {
+  position: relative;
+  height: 100%;
+  width: var(--sidebar-width);
+  max-width: 40vw;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--mu-sidebar-bg);
+  border-right: 1px solid rgba(41, 81, 242, 0.05);
+  transition:
+    transform 0.2s cubic-bezier(0.4, 0, 1, 1),
+    width 0.2s cubic-bezier(0.4, 0, 1, 1);
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+}
+
+.mu-sidebar-folded {
+  transform: translateX(-100%);
+  width: 0;
+  border-right-width: 0;
+}
+
+/* 拖拽调宽时禁用宽度过渡，内容实时跟随（还原原站拖拽手感） */
+.mu-sidebar.mu-is-dragging {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 1, 1);
+}
+
+html.mu-dragging,
+html.mu-dragging * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+.mu-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  position: relative;
+}
+
+/* 拖拽把手：永远禁止文本选中（长按不出选区） */
+.mu-sidebar-drag,
+.mu-sidebar-drag * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mu-sidebar-drag {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.mu-sidebar-drag:hover {
+  background-color: var(--mu-active-blue-bg);
+}
+
+.mu-sidebar-drag-icon {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  color: var(--mu-primary);
+  font-size: 12px;
+}
+
+.mu-sidebar-drag:hover .mu-sidebar-drag-icon {
+  opacity: 0.6;
+}
+
+/* 拖拽中：把手热区加宽便于继续拖动，并显示渐变线 */
+.mu-sidebar.mu-is-dragging .mu-sidebar-drag {
+  width: 10px;
+  background: var(--drag-line-bg);
+}
+
+.mu-fold-trigger.ant-btn {
+  opacity: 0;
+  color: var(--mu-text);
+  transition:
+    opacity 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.mu-sidebar-inner:hover .mu-fold-trigger.ant-btn {
+  opacity: 1;
+}
+
+/* ===== Ant Design Menu 三态导航样式定制 ===== */
+.mu-nav-menu.ant-menu-root {
+  background: transparent;
+  border-inline-end: none !important;
+}
+
+.mu-nav-menu .ant-menu-item {
+  padding-inline: 12px !important;
+  margin-block: 8px 0 !important;
+  margin-inline: 0 !important;
+  width: 100% !important;
+  height: 40px;
+  line-height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+}
+
+/* 新解析入口：蓝紫渐变底 + 渐变文字（兼容 1x 与高分屏细边框） */
+.mu-nav-menu .ant-menu-item.mu-menu-item-grad {
+  background: linear-gradient(
+    105.63deg,
+    rgba(21, 67, 254, 0.05) -3.76%,
+    rgba(140, 70, 255, 0.05) 98.81%
+  );
+  border: 1px solid rgba(21, 67, 254, 0.2);
+}
+
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 2dppx) {
+  .mu-nav-menu .ant-menu-item.mu-menu-item-grad {
+    border-width: 0.5px;
+    border-color: rgba(21, 67, 254, 0.3);
+  }
+}
+
+.mu-nav-menu .ant-menu-item.mu-menu-item-grad:hover {
+  background: linear-gradient(
+    106deg,
+    rgba(21, 67, 254, 0.1) -3.76%,
+    rgba(140, 70, 255, 0.1) 88.81%
+  ) !important;
+}
+
+.mu-nav-menu .ant-menu-item.mu-menu-item-grad .mu-tab-icon {
+  color: rgba(21, 67, 254, 0.8);
+}
+
+.mu-text-grad {
+  background: linear-gradient(106deg, #1543fe -3.76%, #8c46ff 98.81%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  font-weight: 600;
+}
+
+/* 当前选中页：白底浮起阴影 */
+.mu-nav-menu .ant-menu-item-selected {
+  background: #fff !important;
+  box-shadow: 0 4px 40px 2px rgba(18, 19, 22, 0.03);
+  font-weight: 600;
+}
+
+.mu-tab-icon {
+  font-size: 18px;
+  min-width: 20px;
+  color: var(--mu-icon-gray);
+}
+
+/* 折叠后的唤出按钮：双图标交叉淡化（基于 Ant Design Button） */
+.mu-expand-btn.ant-btn {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  padding: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mu-expand-btn-placeholder {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.mu-expand-btn .mu-icon-layer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--mu-text);
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+
+.mu-expand-btn .mu-icon-fold {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+  pointer-events: auto;
+}
+
+.mu-expand-btn .mu-icon-expand {
+  opacity: 0;
+  transform: scale(0.6) rotate(-90deg);
+  pointer-events: none;
+}
+
+.mu-expand-btn:hover .mu-icon-fold {
+  opacity: 0;
+  transform: scale(0.6) rotate(90deg);
+  pointer-events: none;
+}
+
+.mu-expand-btn:hover .mu-icon-expand {
+  opacity: 1;
+  transform: scale(1) rotate(0deg);
+  pointer-events: auto;
+}
+
+/* 折叠后的左侧唤出热区（与头部左内边距 24px 精准对齐，消除双影重叠） */
+.mu-hotzone {
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 56px;
+  height: 60px;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 24px;
+}
+
+.mu-hotzone .mu-expand-btn.ant-btn {
+  opacity: 0;
+  transition:
+    opacity 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.mu-hotzone:hover .mu-expand-btn.ant-btn,
+.mu-hotzone .mu-expand-btn.ant-btn:hover {
+  opacity: 1;
+}
+
+/* ===== 折叠态浮层菜单（还原 slide-left-popover） ===== */
+.mu-flyout-popover .ant-popover-container {
+  padding: 0;
+}
+
+.mu-flyout-popover.ant-popover {
+  position: fixed !important;
+  left: 10px !important;
+  top: 43px !important;
+}
+
+.mu-flyout {
+  box-sizing: border-box;
+  width: var(--sidebar-width, 260px);
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 96px);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow:
+    rgba(0, 0, 0, 0.08) 0 6px 16px 0,
+    rgba(0, 0, 0, 0.12) 0 3px 6px -4px,
+    rgba(0, 0, 0, 0.12) 0 9px 28px 8px;
+  overflow: hidden auto;
+  scrollbar-width: none;
+  padding: 8px 12px 12px;
+}
+
+.mu-flyout::-webkit-scrollbar {
+  display: none;
+}
+
+/* 浮层内标题：与展开态侧栏 Logo 区一致 */
+.mu-flyout-header {
+  padding: 12px 4px 12px;
+}
+
+.mu-flyout-header .mu-logo-name {
+  font-size: 18px;
+}
+
+@keyframes mu-slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-100px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ===== 侧栏内容 ===== */
+/* 固定内层宽度为 --sidebar-width，避免侧栏折叠动画 width->0 期间内部文字被横向挤压重排 */
+.mu-sidebar-inner {
+  width: var(--sidebar-width, 260px);
+  min-width: 200px;
+  max-width: 40vw;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 20px 12px 16px;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.mu-sidebar-inner::-webkit-scrollbar {
+  display: none;
+}
+
+.mu-logo {
+  padding: 0 8px 12px;
+  cursor: pointer;
+}
+
+/* Logo 徽标：antd 图标 + 蓝色圆底 */
+.mu-logo-badge {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--mu-primary);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.mu-logo-name.ant-typography {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--mu-text);
+  letter-spacing: 0.2px;
+}
+
+/* 弹性空白：把底部用户卡片推到侧栏底部 */
+.mu-spacer {
+  flex: 1;
+}
+
+/* 底部用户卡片 */
+.mu-sidebar-footer {
+  background: #fff;
+  border: 1px solid var(--mu-fill-hover);
+  border-radius: 12px;
+  padding: 10px;
+  box-shadow: 0 4px 40px 2px rgba(18, 19, 22, 0.03);
+}
+
+.mu-user-avatar {
+  background: var(--mu-text);
+  color: #fff;
+  font-size: 14px;
+}
+
+.mu-footer-btn.ant-btn {
+  color: var(--mu-icon-gray);
+}
+
+.mu-footer-btn.ant-btn:hover {
+  color: var(--mu-text) !important;
+}
+
+.mu-separator {
+  margin: 10px 8px 0;
+  min-width: 1px;
+  height: 2px;
+  background: var(--mu-fill-hover);
+  border-block-start: none;
+}
+
+/* ===== 主内容 ===== */
+.mu-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 24px 14px;
+  flex-wrap: wrap;
+}
+
+.mu-header-title.ant-typography {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: normal;
+  color: var(--mu-text);
+  white-space: nowrap;
+  margin: 0 !important;
+}
+
+.mu-header-tip.ant-typography {
+  font-size: 13px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.mu-tip-icon {
+  color: var(--mu-warning);
+  margin-right: 6px;
+}
+
+.mu-header-tip .mu-tip-link {
+  margin-left: 2px;
+}
+
+.mu-header-actions {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.mu-header-search {
+  width: clamp(140px, 18vw, 260px);
+}
+
+.mu-collapse-trigger.ant-btn {
+  color: var(--mu-icon-gray);
+}
+
+.mu-collapse-trigger.ant-btn:hover {
+  color: var(--mu-primary) !important;
+  background: var(--mu-blue-hover) !important;
+}
+
+/* ===== 表格 ===== */
+.mu-table-wrap {
+  padding: 0 24px 24px;
+}
+
+.mu-task-name.ant-typography {
+  color: rgba(18, 19, 22, 0.8);
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.mu-table-wrap .ant-table-tbody > tr:hover .mu-task-name.ant-typography {
+  color: var(--mu-primary);
+}
+
+.mu-task-size.ant-typography {
+  font-size: 12px;
+}
+
+.mu-status {
+  font-size: 13px;
+}
+
+.mu-status-success {
+  color: var(--mu-success);
+}
+
+.mu-status-failed {
+  color: var(--mu-warning);
+}
+
+.mu-row-removing {
+  animation: mu-row-removing 0.25s ease-in both;
+}
+
+.mu-action-btn.ant-btn {
+  color: var(--mu-icon-gray);
+}
+
+.mu-action-btn.ant-btn:not(.ant-btn-dangerous):hover {
+  color: var(--mu-primary) !important;
+  background: var(--mu-blue-hover) !important;
+}
+
+.mu-action-faved.ant-btn {
+  color: var(--mu-warning) !important;
+  animation: mu-star-pop 0.35s ease;
+}
+
+/* 筛选弹层缩放动画（还原 contentShow .15s cubic-bezier(.16,1,.3,1)） */
+.mu-filter-dropdown {
+  animation: mu-pop-in 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top right;
+}
+
+@keyframes mu-pop-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* 自定义浮层动效：进入 slideInLeft 500ms；离开极短淡出（还原原站"离开立即消失"） */
+.mu-flyout-motion-enter,
+.mu-flyout-motion-appear {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mu-flyout-motion-enter-active,
+.mu-flyout-motion-appear-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.mu-flyout-motion-enter-active .mu-flyout,
+.mu-flyout-motion-appear-active .mu-flyout {
+  animation: mu-slide-in-left 500ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
+.mu-flyout-motion-leave-active {
+  opacity: 0;
+  transition: opacity 0.01s linear;
+}
+
+.mu-flyout-motion-leave-active .mu-flyout {
+  animation: none;
+}
+
+/* 表格宽度自适应：大屏铺满容器（弹性列吸收剩余宽度），小屏保持最小宽横向滚动 */
+.mu-table-wrap .ant-table-content table {
+  min-width: 100% !important;
+}
+
+/* ===== 新解析（上传视图） ===== */
+.mu-upload-wrap {
+  flex: 1;
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 32px 24px 24px;
+  overflow: auto;
+}
+
+.mu-upload-hero {
+  margin-bottom: 20px;
+}
+
+.mu-upload-hero-icon {
+  font-size: 40px;
+  color: var(--mu-primary);
+}
+
+.mu-upload-hero-title {
+  margin: 0 !important;
+}
+
+.mu-upload-dragger.mu-upload-drag {
+  border-radius: 10px;
+}
+
+.mu-upload-dragger-inner {
+  padding: 28px 0;
+}
+
+.mu-upload-dragger-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  font-size: 26px;
+  color: var(--mu-primary);
+  background: var(--mu-blue-hover, rgba(13, 83, 222, 0.06));
+  border-radius: 50%;
+}
+
+.mu-upload-dragger-hint {
+  font-size: 12px;
+}
+
+.mu-upload-list {
+  margin-top: 16px;
+}
+
+.mu-upload-row {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #f4f5f9;
+}
+
+.mu-upload-row + .mu-upload-row {
+  margin-top: 8px;
+}
+
+.mu-upload-row-icon {
+  font-size: 18px;
+  color: var(--mu-icon-gray);
+}
+
+.mu-upload-row-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.mu-upload-row-title {
+  font-size: 13px;
+}
+
+.mu-upload-row-size {
+  font-size: 12px;
+}
+
+.mu-status-uploading {
+  color: var(--mu-text-weak);
+}
+
+.mu-upload-footer {
+  margin-top: 20px;
+}
+
+/* 解析中状态（第三态，真实数据 mineru_state=submitted） */
+.mu-status-parsing {
+  color: var(--mu-primary);
+}
