@@ -4,6 +4,7 @@ import {
   SkinOutlined,
 } from '@ant-design/icons';
 import { history, useModel } from '@umijs/max';
+import { useQueryClient } from '@tanstack/react-query';
 import type { MenuProps } from 'antd';
 import { Spin } from 'antd';
 import React, { startTransition } from 'react';
@@ -59,10 +60,13 @@ export const AvatarDropdown: React.FC<GlobalHeaderRightProps> = ({
   children,
 }) => {
   const { initialState, setInitialState } = useModel('@@initialState');
+  const queryClient = useQueryClient();
 
   const onMenuClick: MenuProps['onClick'] = (event) => {
     const { key } = event;
     if (key === 'logout') {
+      void queryClient.cancelQueries({ queryKey: ['shuban'] });
+      queryClient.removeQueries({ queryKey: ['shuban'] });
       startTransition(() => {
         setInitialState((s) => ({ ...s, currentUser: undefined }));
       });

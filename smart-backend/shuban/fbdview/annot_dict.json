@@ -1,0 +1,729 @@
+{
+  "version": "1.1",
+  "note": "方正书版小样（.fbd/.PRO）注解字典。confidence：high=已在本会话真实语料中验证；medium=语义较明确但未逐一验证；low=待确认（报告会列出）。form：paren=首括号判定开闭；toggle=有参数为开、无参数为闭；single=独立注解；state=状态型（作用至下次同类注解）；def=自定义注解定义；call=自定义注解调用。 1.1 版按《方正书版使用指南》(2014-04) 补全官方注解并修正语义：XD=消除单字行注解、JD=加底纹注解、ZB=子表注解、CS/CSX/CSD=字符/框线/底纹颜色、BX 的第三个长度值是行距（此前误读为出血）、C 值才是成品尺寸、N引号=小 N 号；并新增官方收录但词典缺失的注解。",
+  "annotations": {
+    "=": {
+      "cat": "自定义",
+      "form": "call",
+      "desc": "自定义注解调用：〖=名〗；〖=SB(…〗…〖=〗 为带参数调用",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/自定义宏.md#eq"
+    },
+    "ZD": {
+      "cat": "自定义",
+      "form": "def",
+      "desc": "自定义注解定义：〖ZD<名>（〗…〖ZD）〗，调用形式 〖=名〗",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/自定义宏.md#zd"
+    },
+    "BP": {
+      "cat": "版面",
+      "form": "paren",
+      "desc": "版面注解：声明页面尺寸（宽*高 或 高*宽，两种书写顺序都出现过）、上下左右边空、含出血与否。非官方指南收录的注解名，本系列用于小样首部声明版面",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#bp"
+    },
+    "BX": {
+      "cat": "版心",
+      "form": "single",
+      "desc": "版心定义注解：官方公式 [BX<版心字号><版心字体>…,<版心高>。<版心宽>,<行距>[!][B][D][C<成品高>。<成品宽>,[A][S]<上空或下空>,[Z]<订口或切口>,<出血>,[Q][F]]]。注意第三个长度值是行距、C 值才是成品尺寸（早期曾把行距误读为出血）",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#bx"
+    },
+    "BW": {
+      "cat": "边文",
+      "form": "paren",
+      "desc": "边文注解（书眉、帖线等页面边饰）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#bw"
+    },
+    "BJ": {
+      "cat": "背景",
+      "form": "paren",
+      "desc": "背景/边界注解（装订缝 logo 带）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#bj"
+    },
+    "XD": {
+      "cat": "版面",
+      "form": "single",
+      "desc": "消除单字行注解：官方公式 [XD[!]]。无 ! 表示其后排版消除单字行（一行只有一个汉字加标点）；有 ! 则按低版本处理、不消除。纯排版规则，无行内视觉输出",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#xd"
+    },
+    "HT": {
+      "cat": "字体",
+      "form": "state",
+      "desc": "汉字字体字号：<双向字号>（纵[,横]）。字号写法：常用字号 0-8、N\"=小 N 号、N.=N 磅、N.M=N 磅 M 分（M 属于 25/50/75）、N;=N 级（1 级=0.25mm）。字体：书宋SS/黑体H/楷体K/仿宋F/报宋BS/细报宋XBS/魏碑W",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#ht"
+    },
+    "WT": {
+      "cat": "字体",
+      "form": "state",
+      "desc": "外文字体注解：字号格式同 HT；方正外文字体 白正(BZ)、黑正(HZ) 等；《字体名》为 ASCII 外挂字体，# 表示取消外挂字体",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#wt"
+    },
+    "ST": {
+      "cat": "字体",
+      "form": "state",
+      "desc": "数字字体注解：<双向字号>+<数字字体>；数字字体不能为 FH，应写 FZ；〖ST+〗 可按 WT_ST.TAB 自动搭配外文与数字字体",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#st"
+    },
+    "HJ": {
+      "cat": "间距",
+      "form": "state",
+      "desc": "行距注解：行距＝行间空隙（行高＝字高+行距）。参数 [<字号>:][<倍数>]*<分数> 或 Nmm/Np/Nx",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/间距位置.md#hj"
+    },
+    "KH": {
+      "cat": "间距",
+      "form": "state",
+      "desc": "空行注解 [KH[-]<空行参数>[X|D]]：- 表示向排版反方向移动（即压缩）；参数可为 <行数> / <行数>+<行距> / <行数>*<分数>；X 表示继续、D 表示顶格",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/间距位置.md#kh"
+    },
+    "KG": {
+      "cat": "间距",
+      "form": "state",
+      "desc": "空格注解：<空格数>|<空格数>。<字数>|<空格数>*<分数>|Nmm|Np|Nx；按字宽或绝对长度留空",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/间距位置.md#kg"
+    },
+    "JP": {
+      "cat": "间距",
+      "form": "state",
+      "desc": "紧排注解（负值为拉伸）",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/间距位置.md#jp"
+    },
+    "JZ": {
+      "cat": "版式",
+      "form": "paren",
+      "desc": "居中注解（( 开 ) 闭）",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#jz"
+    },
+    "JY": {
+      "cat": "版式",
+      "form": "paren",
+      "desc": "居右注解：〖JY。〗带点线；( 开 ) 闭为块",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#jy"
+    },
+    "ZK": {
+      "cat": "版式",
+      "form": "paren",
+      "desc": "自空注解（悬挂缩进；题库题干大量使用；# 为特殊参数）",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#zk"
+    },
+    "CM": {
+      "cat": "版式",
+      "form": "paren",
+      "desc": "撑满注解",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#cm"
+    },
+    "SX": {
+      "cat": "版式",
+      "form": "paren",
+      "desc": "上下注解（上下叠排）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#sx"
+    },
+    "DW": {
+      "cat": "版式",
+      "form": "single",
+      "desc": "对位注解（答案列对齐）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#dw"
+    },
+    "HS": {
+      "cat": "版式",
+      "form": "single",
+      "desc": "行数注解（按行高设置）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#hs"
+    },
+    "WB": {
+      "cat": "版式",
+      "form": "single",
+      "desc": "官方指南未收录（全文仅出现在除号注解示例 [KG4][CH( )4[ ][WB]1 = [WB]8… 中）；本系列中用于答案列对齐位置与书眉宏定义内，语义待确认",
+      "confidence": "low",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#wb"
+    },
+    "SQ": {
+      "cat": "版式",
+      "form": "single",
+      "desc": "官方指南未收录为独立注解（仅在分区示例 [FQ(…][SQ0][HK24*2/3] 中出现一次）；本系列仅见于答题卡表格行（〖SQ+3mm〗），语义待确认",
+      "confidence": "low",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#sq"
+    },
+    "GK": {
+      "cat": "版式",
+      "form": "single",
+      "desc": "官方指南未收录；仅见于本系列小册子目录区（〖GK2!2〗），语义待确认",
+      "confidence": "low",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#gk"
+    },
+    "FL": {
+      "cat": "分栏",
+      "form": "paren",
+      "desc": "分栏注解：官方公式 [FL(<栏宽>|<分栏数>)[!][H<线号>]-<线型>][<颜色>][K<字距>]]…[FL)(X|<拉平栏数>)]。注意 K 后为栏间距（字距或 mm），! 才在栏间画正线（缺省五号字正线），-<线型> 指定 F/S/D/Q/=/CW/XW/H 花边",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/分栏分页.md#fl"
+    },
+    "LM": {
+      "cat": "分栏",
+      "form": "single",
+      "desc": "栏末注解",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/分栏分页.md#lm"
+    },
+    "LL": {
+      "cat": "分栏",
+      "form": "single",
+      "desc": "另栏注解",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/分栏分页.md#ll"
+    },
+    "BG": {
+      "cat": "表格",
+      "form": "paren",
+      "desc": "表格注解（(！开 )F/)W 闭）",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/表格.md#bg"
+    },
+    "BH": {
+      "cat": "表格",
+      "form": "single",
+      "desc": "表行注解（BHD/BHDFG/BHDWG… 为其参数形态）",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/表格.md#bh"
+    },
+    "ZB": {
+      "cat": "表格",
+      "form": "paren",
+      "desc": "子表注解：官方公式 [ZB()]<表格体>[ZB)<底线线型号>[<颜色>]；用于在表格项内再套一层表格",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/表格.md#zb"
+    },
+    "ZZ": {
+      "cat": "着重",
+      "form": "paren",
+      "desc": "着重注解：①[ZZ<字数>[<着重符>][#][,<附加距离>]] ②[ZZ(<着重符>)[#]<,<附加距离>]…[ZZ)] ③[ZZ(<底纹说明>)]…[ZZ)]。着重符 Z正线/F反线/D点线/S双线/Q曲线/=双曲线/L三连点/。加圈，缺省＝着重点；# 表示加在字上（横排）",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#zz"
+    },
+    "YY": {
+      "cat": "装饰",
+      "form": "paren",
+      "desc": "阴阳注解（反白），用于黑底白字标签",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#yy"
+    },
+    "FK": {
+      "cat": "装饰",
+      "form": "paren",
+      "desc": "方框注解",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#fk"
+    },
+    "JD": {
+      "cat": "装饰",
+      "form": "single",
+      "desc": "加底纹注解（官方 9.9 彩色版面处理中列举）：参数为底纹编号＝深浅度(0-8)+三位编号，如 0001 即深浅 0、编号 001；本系列仅出现于目录文件的方框之后",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#jd"
+    },
+    "CS": {
+      "cat": "彩色",
+      "form": "toggle",
+      "desc": "彩色注解（缺省 X/D 时为字符颜色）：[CS[X|D][%]<C>,<M>,<Y>,<K>]；无 % 时取值 0-255，有 % 时 0-100；裸 〖CS〗 把字符色恢复为版心颜色",
+      "confidence": "high",
+      "balanced": false,
+      "guide": "skills/fbd-typeset/注解手册/彩色底纹.md#cs"
+    },
+    "CSD": {
+      "cat": "彩色",
+      "form": "toggle",
+      "desc": "彩色注解 D 形态：设置底纹颜色；裸 〖CSD〗 把底纹色恢复为黑色",
+      "confidence": "high",
+      "balanced": false,
+      "guide": "skills/fbd-typeset/注解手册/彩色底纹.md#csd"
+    },
+    "CSX": {
+      "cat": "彩色",
+      "form": "toggle",
+      "desc": "彩色注解 X 形态：设置框线颜色；裸 〖CSX〗 把框线色恢复为黑色",
+      "confidence": "high",
+      "balanced": false,
+      "guide": "skills/fbd-typeset/注解手册/彩色底纹.md#csx"
+    },
+    "XC": {
+      "cat": "图片",
+      "form": "single",
+      "desc": "插图注解（文件名;缩放;定位）",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/图片.md#xc"
+    },
+    "PS": {
+      "cat": "图片",
+      "form": "single",
+      "desc": "图片注解（放置图片文件，尺寸定位）",
+      "confidence": "high",
+      "guide": "skills/fbd-typeset/注解手册/图片.md#ps"
+    },
+    "TP": {
+      "cat": "图片",
+      "form": "single",
+      "desc": "图版注解（图片+图说）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/图片.md#tp"
+    },
+    "ML": {
+      "cat": "目录",
+      "form": "paren",
+      "desc": "目录注解（自动生成目录）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/目录书眉注文.md#ml"
+    },
+    "BM": {
+      "cat": "页码",
+      "form": "single",
+      "desc": "页码注解（动态页码）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/分栏分页.md#bm"
+    },
+    "YM": {
+      "cat": "页码",
+      "form": "single",
+      "desc": "页码说明注解（多见于 .PRO）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/分栏分页.md#ym"
+    },
+    "MS": {
+      "cat": "书眉",
+      "form": "single",
+      "desc": "眉说注解（多见于 .PRO）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/目录书眉注文.md#ms"
+    },
+    "ZS": {
+      "cat": "注释",
+      "form": "single",
+      "desc": "注说注解（多见于 .PRO）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/目录书眉注文.md#zs"
+    },
+    "BD": {
+      "cat": "标点",
+      "form": "single",
+      "desc": "标点注解（多见于 .PRO）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#bd"
+    },
+    "CD": {
+      "cat": "画线",
+      "form": "single",
+      "desc": "长度注解（画线，如 〖CD#8〗 填空线）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#cd"
+    },
+    "WM": {
+      "cat": "目录",
+      "form": "single",
+      "desc": "官方指南未收录（该版本目录类注解为 MD 自动目录定义、MZ 自动登记目录）；本系列仅出现在 〖ML(〗…〖ML)〗 区块首尾，语义待确认",
+      "confidence": "low",
+      "guide": "skills/fbd-typeset/注解手册/目录书眉注文.md#wm"
+    },
+    "QX": {
+      "cat": "字体",
+      "form": "single",
+      "desc": "倾斜字注解：设置字符的倾斜角度/方向",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#qx"
+    },
+    "CX": {
+      "cat": "字体",
+      "form": "single",
+      "desc": "粗细注解：设置字符的粗细（加粗/变细）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#cx"
+    },
+    "CB": {
+      "cat": "字体",
+      "form": "single",
+      "desc": "长扁字注解：设置字符的长扁（纵向/横向缩放）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#cb"
+    },
+    "WZ": {
+      "cat": "字体",
+      "form": "single",
+      "desc": "文种注解：指定外文文种（英文/俄文/希腊文等）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#wz"
+    },
+    "ZY": {
+      "cat": "字体",
+      "form": "paren",
+      "desc": "注音注解：为汉字加注音（拼音/注音符号）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#zy"
+    },
+    "GB": {
+      "cat": "装饰",
+      "form": "paren",
+      "desc": "勾边注解：给字符加勾边（描边）效果",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#gb"
+    },
+    "LT": {
+      "cat": "装饰",
+      "form": "single",
+      "desc": "立体注解：给字符加立体（阴影）效果",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#lt"
+    },
+    "RW": {
+      "cat": "字体",
+      "form": "single",
+      "desc": "日文注解：日文排版相关设置",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#rw"
+    },
+    "SS": {
+      "cat": "字体",
+      "form": "single",
+      "desc": "角标大小设置注解：设定上下角标相对正文缩小几个字号级别（缺省小四级）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#ss"
+    },
+    "PJ": {
+      "cat": "版式",
+      "form": "single",
+      "desc": "禁排注解：指定某些字符不排在行首或行尾（禁则处理）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#pj"
+    },
+    "KD": {
+      "cat": "字体",
+      "form": "single",
+      "desc": "外挂字体名定义注解：为外挂字体定义别名，供 HT/WT 等引用",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/字体字号.md#kd"
+    },
+    "KM": {
+      "cat": "书眉",
+      "form": "single",
+      "desc": "空眉注解：本页不排书眉（可指定范围）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/目录书眉注文.md#km"
+    },
+    "BY": {
+      "cat": "背景",
+      "form": "single",
+      "desc": "背景隐藏注解：隐藏指定页面范围的背景",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#by"
+    },
+    "CT": {
+      "cat": "注释",
+      "form": "paren",
+      "desc": "词条注解：为词条加注（与索引/词条抽取配合）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/目录书眉注文.md#ct"
+    },
+    "BT": {
+      "cat": "版式",
+      "form": "single",
+      "desc": "标题注解：按标题定义(BD)的格式排标题，含占行数",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#bt"
+    },
+    "HK": {
+      "cat": "版式",
+      "form": "single",
+      "desc": "行宽注解：改变当前行宽（可指定左右位置）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#hk"
+    },
+    "HY": {
+      "cat": "版式",
+      "form": "single",
+      "desc": "行移注解：行整体左右移动（多用于日文/诗歌排版）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#hy"
+    },
+    "ZW": {
+      "cat": "注释",
+      "form": "paren",
+      "desc": "注文注解：正文中的注释文字（脚注/文后注/页末注）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/目录书眉注文.md#zw"
+    },
+    "DZ": {
+      "cat": "版式",
+      "form": "paren",
+      "desc": "对照注解：多栏对照排版（如原文与译文对照）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#dz"
+    },
+    "DS": {
+      "cat": "版式",
+      "form": "paren",
+      "desc": "段首注解：制作段首大字/段首装饰块",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#ds"
+    },
+    "FQ": {
+      "cat": "版面",
+      "form": "paren",
+      "desc": "分区注解：在版面内划出一块区域独立排版",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#fq"
+    },
+    "LQ": {
+      "cat": "版面",
+      "form": "paren",
+      "desc": "另区注解：类似分区，区域独立计算行数",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#lq"
+    },
+    "LJ": {
+      "cat": "装饰",
+      "form": "single",
+      "desc": "六角环注解：排六角环（化学结构式用）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#lj"
+    },
+    "SD": {
+      "cat": "版面",
+      "form": "single",
+      "desc": "始点注解：指定后续内容的排版起始位置",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#sd"
+    },
+    "SP": {
+      "cat": "版面",
+      "form": "paren",
+      "desc": "竖排注解：局部内容竖排",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#sp"
+    },
+    "SJ": {
+      "cat": "版式",
+      "form": "single",
+      "desc": "段首缩进注解：指定段首缩进量（字距/毫米）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版式.md#sj"
+    },
+    "FY": {
+      "cat": "装饰",
+      "form": "single",
+      "desc": "反应注解：排化学反应式（反应号/箭头）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#fy"
+    },
+    "HX": {
+      "cat": "画线",
+      "form": "paren",
+      "desc": "画线注解：在版面上画线（起止点+线型），受彩色注解框线色影响",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#hx"
+    },
+    "JS": {
+      "cat": "其他",
+      "form": "single",
+      "desc": "计数注解：设置页码/章节等自动计数",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/其他.md#js"
+    },
+    "CZ": {
+      "cat": "其他",
+      "form": "single",
+      "desc": "参照注解：内容参照（与词条/索引配合）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/其他.md#cz"
+    },
+    "CW": {
+      "cat": "其他",
+      "form": "single",
+      "desc": "纯文字注解：后续内容不参与排版处理",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/其他.md#cw"
+    },
+    "SB": {
+      "cat": "其他",
+      "form": "single",
+      "desc": "书版注解（多见于 .PRO 的首行）：指定小样文件等",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/其他.md#sb"
+    },
+    "CR": {
+      "cat": "其他",
+      "form": "single",
+      "desc": "插入注解：在排版时插入另一个文件",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/其他.md#cr"
+    },
+    "GW": {
+      "cat": "表格",
+      "form": "single",
+      "desc": "表格跨项位标注解：标记跨项位（与 GD 配合）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/表格.md#gw"
+    },
+    "GD": {
+      "cat": "表格",
+      "form": "single",
+      "desc": "表格跨项对位注解：表格跨项时的对位处理",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/表格.md#gd"
+    },
+    "ZP": {
+      "cat": "表格",
+      "form": "single",
+      "desc": "卧排表格注解：表格横向卧排（旋转 90 度）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/表格.md#zp"
+    },
+    "XB": {
+      "cat": "表格",
+      "form": "single",
+      "desc": "续排表格注解：表格跨页续排",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/表格.md#xb"
+    },
+    "TS": {
+      "cat": "图片",
+      "form": "paren",
+      "desc": "图说注解：图片的说明文字（图题）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/图片.md#ts"
+    },
+    "TZ": {
+      "cat": "图片",
+      "form": "single",
+      "desc": "图注注解：图内注释编号",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/图片.md#tz"
+    },
+    "MD": {
+      "cat": "目录",
+      "form": "paren",
+      "desc": "自动目录定义注解：定义自动目录的格式",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/目录书眉注文.md#md"
+    },
+    "MZ": {
+      "cat": "目录",
+      "form": "single",
+      "desc": "自动登记目录注解：把标题登记进目录",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/目录书眉注文.md#mz"
+    },
+    "XP": {
+      "cat": "目录",
+      "form": "single",
+      "desc": "索引点注解：标记索引条目位置",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/目录书眉注文.md#xp"
+    },
+    "MQ": {
+      "cat": "版面",
+      "form": "paren",
+      "desc": "多页分区注解：跨页分区（可指定层、出现页、起点、尺寸、底纹等）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#mq"
+    },
+    "PN": {
+      "cat": "页码",
+      "form": "paren",
+      "desc": "页号注解：自定义页码格式/位置/字号",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/分栏分页.md#pn"
+    },
+    "BL": {
+      "cat": "边文",
+      "form": "paren",
+      "desc": "边栏注解：在版心外排副栏（边栏内容）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#bl"
+    },
+    "BZ": {
+      "cat": "边文",
+      "form": "single",
+      "desc": "边注注解：在边栏/版心外排边注（与 BL 配合）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/版面版心.md#bz"
+    },
+    "HL": {
+      "cat": "其他",
+      "form": "paren",
+      "desc": "行列注解：排数理公式的行列式",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/其他.md#hl"
+    },
+    "TX": {
+      "cat": "画线",
+      "form": "single",
+      "desc": "添线注解：给公式内容加线（分数线、根号线等）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#tx"
+    },
+    "CH": {
+      "cat": "其他",
+      "form": "single",
+      "desc": "除号注解：排除法竖式/除号",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/其他.md#ch"
+    },
+    "KX": {
+      "cat": "装饰",
+      "form": "paren",
+      "desc": "空心注解：字符空心（白字）效果",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#kx"
+    },
+    "JB": {
+      "cat": "其他",
+      "form": "paren",
+      "desc": "界标注解：排公式的界标（大括号等）",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/其他.md#jb"
+    },
+    "FC": {
+      "cat": "其他",
+      "form": "paren",
+      "desc": "方程组注解：排联立方程组",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/其他.md#fc"
+    },
+    "KF": {
+      "cat": "其他",
+      "form": "paren",
+      "desc": "开方注解：排根式",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/其他.md#kf"
+    },
+    "XX": {
+      "cat": "画线",
+      "form": "single",
+      "desc": "斜线注解：画斜线",
+      "confidence": "medium",
+      "guide": "skills/fbd-typeset/注解手册/装饰画线.md#xx"
+    }
+  },
+  "unknown_bytes": {
+    "aab1": "出现在数字之间（如 21⟨aab1⟩097、93⟨aab1⟩19），疑为数字分节/间隔符，待确认",
+    "a440": "答题卡选项区出现（常与 a441 连用），疑为定位/框线标记",
+    "a441": "答题卡选项区出现（如 ⟨a441⟩4〓〓、⟨a441⟩2（2）⟨a442⟩），疑为定位/框线标记",
+    "a442": "答题卡选项区出现，疑为定位/框线标记"
+  }
+}
