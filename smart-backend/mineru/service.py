@@ -55,8 +55,20 @@ def get_mineru_config() -> dict:
     }
 
 
-def submit_task_to_mineru(pdf_url: str) -> dict:
-    """提交文档到 MinerU 进行解析，返回 ``{"task_id": "..."}``。失败抛出异常。"""
+def submit_task_to_mineru(
+    pdf_url: str,
+    *,
+    model_version: str = "vlm",
+    is_ocr: bool = True,
+    enable_formula: bool = True,
+    enable_table: bool = True,
+    language: str = "ch",
+    page_ranges: Optional[str] = None,
+) -> dict:
+    """提交文档到 MinerU 进行解析，返回 ``{"task_id": "..."}``。失败抛出异常。
+
+    模型参数与 MinerU 精准解析 API 对齐；默认值保持原线上行为（vlm + OCR）。
+    """
     cfg = get_mineru_config()
     url = "https://mineru.net/api/v4/extract/task"
     headers = {
@@ -65,14 +77,19 @@ def submit_task_to_mineru(pdf_url: str) -> dict:
     }
     payload = {
         "url": pdf_url,
-        "model_version": "vlm",
-        "is_ocr": True,
+        "model_version": model_version,
+        "is_ocr": is_ocr,
+        "enable_formula": enable_formula,
+        "enable_table": enable_table,
+        "language": language,
         "seed": cfg["seed"],
         "callback": cfg["callback_url"],
         # MinerU 平台原生生成 full.docx / full.html（版式/公式还原优于本地 pandoc），
         # 结果 zip 内会附带 full.docx + full.html + layout.json（图片真实尺寸修复用）
         "extra_formats": ["docx", "html"],
     }
+    if page_ranges:
+        payload["page_ranges"] = page_ranges
     res = requests.post(url, headers=headers, json=payload, timeout=10.0)
     res.raise_for_status()
     res_data = res.json()

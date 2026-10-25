@@ -12,6 +12,9 @@
 import asyncio
 import hashlib
 import json
+import os
+import uuid
+from urllib.parse import urlparse
 
 import httpx
 import requests
@@ -34,9 +37,35 @@ router = APIRouter(prefix="/api/mineru", tags=["MinerU 解析模块"])
 
 
 @router.post("/extract/submit", summary="提交文档解析任务")
-def submit_task(request: SubmitRequest, _user=Depends(get_current_user)):
+def submit_task(
+    request: SubmitRequest,
+    db=Depends(get_db),
+    current_user=Depends(get_current_user),
+):
     try:
-        result = submit_task_to_mineru(request.pdf_url)
+        result = submit_task_to_mineru(
+            request.pdf_url,
+            model_version=request.model_version,
+            is_ocr=request.is_ocr,
+            enable_formula=request.enable_formula,
+            enable_table=request.enable_table,
+            language=request.language,
+            page_ranges=request.page_ranges,
+        )
+        # 落库为任务记录（任务管理页可见，与文件上传解析同一张表）；
+        # 后续状态推进复用任务列表接口的轮询自愈机制
+        name = os.path.basename(urlparse(request.pdf_url).path) or "webpage"
+        crud.create_file_record(
+            db=db,
+            original_name=name,
+            saved_name=uuid.uuid4().hex,
+            file_path="",
+            file_size=0,
+            download_url=request.pdf_url,
+            uid=current_user.userid,
+            mineru_task_id=result["task_id"],
+            mineru_state="submitted",
+        )
         return {"msg": "任务提交成功", "task_id": result["task_id"]}
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
