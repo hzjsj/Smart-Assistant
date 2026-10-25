@@ -9,6 +9,7 @@ import {
   listUsers,
 } from '@/services/user';
 import CreateForm from './components/CreateForm';
+import LoginLinkModal from './components/LoginLinkModal';
 import UpdateForm from './components/UpdateForm';
 
 /** 角色 → 标签样式 */
@@ -102,7 +103,7 @@ const UserList: React.FC = () => {
     {
       title: '操作',
       valueType: 'option',
-      width: 140,
+      width: 200,
       render: (_, record) => [
         <UpdateForm
           key="edit"
@@ -110,6 +111,7 @@ const UserList: React.FC = () => {
           onOk={reload}
           trigger={<Button type="link" size="small">编辑</Button>}
         />,
+        <LoginLinkModal key="login-link" values={record} />,
         <Popconfirm
           key="delete"
           title={`确认删除用户 ${record.username}？`}

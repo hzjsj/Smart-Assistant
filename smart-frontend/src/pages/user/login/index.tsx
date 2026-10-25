@@ -11,13 +11,18 @@ import {
   ProFormCaptcha,
   ProFormCheckbox,
   ProFormText,
+  type ProFormInstance,
 } from '@ant-design/pro-components';
-import { Helmet, useModel,  } from '@umijs/max';
+import { Helmet, history, useModel } from '@umijs/max';
 import { Alert, App, Button, Tabs } from 'antd';
 import { createStyles } from 'antd-style';
-import React, { startTransition, useState } from 'react';
+import React, { startTransition, useEffect, useRef, useState } from 'react';
 import { Footer } from '@/components';
-import { login } from '@/services/ant-design-pro/api';
+import {
+  login,
+  loginByTicket,
+  currentUser as queryCurrentUser,
+} from '@/services/ant-design-pro/api';
 import { getFakeCaptcha } from '@/services/ant-design-pro/login';
 import Settings from '../../../../config/defaultSettings';
 
@@ -37,6 +42,64 @@ const getSafeRedirectUrl = (redirect: string | null): string => {
   } catch {
     return '/';
   }
+};
+
+const getRedirectUrl = () => {
+  const searchParams = new URL(window.location.href).searchParams;
+  return getSafeRedirectUrl(searchParams.get('redirect'));
+};
+
+type PrefillCredentials = {
+  username: string;
+  password: string;
+  autoLogin: boolean;
+};
+
+type LoginUrlParams = {
+  prefillCredentials?: PrefillCredentials;
+  ticket?: string;
+};
+
+const LOGIN_URL_KEYS = ['username', 'password', 'autoLogin', 'ticket'] as const;
+const AUTO_LOGIN_TRUTHY_VALUES = new Set(['1', 'true', 'yes', 'y']);
+
+/**
+ * 从地址栏读取登录 URL 参数：
+ *   ?ticket=xxx                        一次性免密登录（用户管理页「登录链接」生成）
+ *   ?username=u&password=p&autoLogin=1 账密预填 + 自动提交（开发/调试用，密码明文经 URL 传递）
+ * 只传 username 不传 password 时，密码默认与账号相同（测试账号场景）。
+ * 读取后立即从地址栏移除这些参数：避免凭证留存在浏览器历史，
+ * 也避免刷新或 StrictMode 二次执行时重复自动登录。
+ */
+const consumeLoginUrlParams = (): LoginUrlParams => {
+  const searchParams = new URLSearchParams(window.location.search);
+
+  const ticket = searchParams.get('ticket') ?? undefined;
+
+  const username = searchParams.get('username');
+  const prefillCredentials = username
+    ? {
+        username,
+        password: searchParams.get('password') ?? username,
+        autoLogin: AUTO_LOGIN_TRUTHY_VALUES.has(
+          (searchParams.get('autoLogin') ?? '').toLowerCase(),
+        ),
+      }
+    : undefined;
+
+  const url = new URL(window.location.href);
+  let changed = false;
+  LOGIN_URL_KEYS.forEach((key) => {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  });
+  if (changed) {
+    window.history.replaceState({}, '', url.toString());
+  }
+
+  return { prefillCredentials, ticket };
 };
 
 const useStyles = createStyles(({ token }) => {
@@ -114,6 +177,11 @@ const LoginMessage: React.FC<{
 const Login: React.FC = () => {
   const [userLoginState, setUserLoginState] = useState<API.LoginResult>({});
   const [type, setType] = useState<string>('account');
+  const [loginUrlParams] = useState(consumeLoginUrlParams);
+  const { prefillCredentials, ticket } = loginUrlParams;
+  const accountFormRef = useRef<ProFormInstance | undefined>(undefined);
+  const autoLoginHandledRef = useRef(false);
+  const ticketHandledRef = useRef(false);
   const { initialState, setInitialState } = useModel('@@initialState');
   const { styles } = useStyles();
   const { message } = App.useApp();
@@ -138,9 +206,7 @@ const Login: React.FC = () => {
         const defaultLoginSuccessMessage = '登录成功！';
         message.success(defaultLoginSuccessMessage);
         await fetchUserInfo();
-        const urlParams = new URL(window.location.href).searchParams;
-        const redirectUrl = getSafeRedirectUrl(urlParams.get('redirect'));
-        window.location.href = redirectUrl;
+        window.location.href = getRedirectUrl();
         return;
       }
       // 如果失败去设置用户错误信息
@@ -150,6 +216,58 @@ const Login: React.FC = () => {
       message.error(defaultLoginFailureMessage);
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      // 先探测登录态：已登录直接跳目标页，不消费 ticket、不重复提交账密。
+      // 纯查询接口，401 静默处理（skipErrorHandler），失败按未登录继续。
+      try {
+        const msg = await queryCurrentUser({ skipErrorHandler: true });
+        if (msg.data) {
+          startTransition(() => {
+            setInitialState((s) => ({ ...s, currentUser: msg.data }));
+          });
+          history.push(getRedirectUrl());
+          return;
+        }
+      } catch {
+        // 查询失败按未登录处理
+      }
+      if (cancelled) return;
+
+      // URL 带 ticket：一次性免密登录（用户管理页生成的登录链接）
+      if (ticket && !ticketHandledRef.current) {
+        ticketHandledRef.current = true;
+        try {
+          const res = await loginByTicket({ ticket }, { skipErrorHandler: true });
+          if (res.status === 'ok') {
+            message.success('登录成功！');
+            await fetchUserInfo();
+            history.push(getRedirectUrl());
+            return;
+          }
+          message.error(res.message || '登录链接已失效，请重新获取');
+        } catch {
+          message.error('登录链接已失效，请重新获取');
+        }
+        return;
+      }
+
+      // URL 带账号密码且 autoLogin=1：自动提交账号登录（走表单原生 submit，
+      // 复用校验、按钮 loading 与错误展示）
+      if (!prefillCredentials?.autoLogin || autoLoginHandledRef.current) return;
+
+      autoLoginHandledRef.current = true;
+      accountFormRef.current?.submit();
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [prefillCredentials, ticket, setInitialState]);
   const { status, type: loginType } = userLoginState;
 
   return (
@@ -167,6 +285,7 @@ const Login: React.FC = () => {
         }}
       >
         <LoginForm
+          formRef={accountFormRef}
           contentStyle={{
             minWidth: 280,
             maxWidth: '75vw',
@@ -176,6 +295,10 @@ const Login: React.FC = () => {
           subTitle={'Ant Design 是西湖区最具影响力的 Web 设计规范'}
           initialValues={{
             autoLogin: true,
+            ...(prefillCredentials && {
+              username: prefillCredentials.username,
+              password: prefillCredentials.password,
+            }),
           }}
           actions={[
             'loginWith',

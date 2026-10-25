@@ -6,10 +6,11 @@ from database import get_db
 from auth import require_admin
 from users.schemas import (
     LoginParams, LoginResult, FakeCaptcha, ErrorResponse,
+    TicketLoginRequest, TicketLoginResult,
     CurrentUserResponse, CurrentUser, Geographic, Province, TagItem,
     CreateUserRequest, UpdateUserRequest, DeleteUsersRequest,
 )
-from users import crud
+from users import crud, tickets
 from users.models import User
 from users.sessions import (
     create_session,
@@ -102,6 +103,27 @@ def get_captcha(phone: str | None = Query(None, description="手机号")):
     return FakeCaptcha().model_dump()
 
 
+@router.post("/api/login/ticket", responses={401: {"model": ErrorResponse}})
+def login_by_ticket(body: TicketLoginRequest, response: Response, db: Session = Depends(get_db)):
+    """一次性免密登录：校验并消费 ticket，成功则下发会话 cookie。"""
+    user_id = tickets.consume_login_ticket(db, body.ticket)
+    if user_id is None:
+        return TicketLoginResult(status="error", message="登录链接已失效，请重新获取").model_dump()
+    user = db.query(User).filter_by(id=user_id).first()
+    if not user:
+        return TicketLoginResult(status="error", message="用户不存在").model_dump()
+
+    token = create_session(db, user.id)
+    response.set_cookie(
+        key="mock_token",
+        value=token,
+        httponly=False,
+        samesite="lax",
+        max_age=SESSION_TTL_DAYS * 24 * 3600,
+    )
+    return TicketLoginResult(status="ok").model_dump()
+
+
 # ── 用户 CRUD 接口（仅管理员）────────────────────────────────────────
 
 @router.get("/api/users", responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}})
@@ -161,3 +183,20 @@ def delete_users(
         return {"success": False, "errorMessage": "不能删除当前登录账号"}
     deleted = crud.delete_users(db, body.ids)
     return {"success": True, "deleted": deleted}
+
+
+@router.post(
+    "/api/users/{user_id}/login-ticket",
+    responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}},
+)
+def create_user_login_ticket(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """为指定用户签发一次性免密登录 ticket（用于生成登录链接，仅管理员）。"""
+    user = db.query(User).filter_by(id=user_id).first()
+    if not user:
+        return {"success": False, "errorMessage": "用户不存在"}
+    ticket = tickets.create_login_ticket(db, user.id)
+    return {"success": True, "data": {"ticket": ticket, "url": f"/user/login?ticket={ticket}"}}

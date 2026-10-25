@@ -61,6 +61,16 @@ class FakeCaptcha(BaseModel):
     status: str = "ok"
 
 
+class TicketLoginRequest(BaseModel):
+    """POST /api/login/ticket 请求体"""
+    ticket: str = Field(min_length=1, description="一次性免密登录凭证")
+
+
+class TicketLoginResult(BaseModel):
+    status: str = Field(description="ok / error")
+    message: Optional[str] = Field(default=None, description="error 时的说明")
+
+
 class ErrorResponse(BaseModel):
     errorCode: str = Field(description="业务约定的错误码")
     errorMessage: Optional[str] = Field(default=None, description="业务上的错误信息")

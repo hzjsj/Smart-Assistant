@@ -76,3 +76,17 @@ export async function deleteUsers(ids: number[]) {
     data: { ids },
   });
 }
+
+/** 一次性免密登录 ticket 签发结果 */
+export interface LoginTicketResult {
+  ticket: string;
+  /** 登录页相对路径：/user/login?ticket=xxx */
+  url: string;
+}
+
+/** 为指定用户签发一次性免密登录 ticket（仅管理员） */
+export async function createLoginTicket(id: number) {
+  return request<ApiResult<LoginTicketResult>>(`/api/users/${id}/login-ticket`, {
+    method: 'POST',
+  });
+}

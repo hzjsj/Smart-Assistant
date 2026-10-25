@@ -39,3 +39,17 @@ class UserSession(Base):
     user_id = Column(Integer, nullable=False, index=True, comment="所属用户ID")
     expires_at = Column(DateTime, nullable=False, comment="过期时间")
     created_at = Column(DateTime, server_default=func.now(), comment="创建时间")
+
+
+class LoginTicket(Base):
+    """一次性免密登录 ticket。
+
+    管理员在用户管理页为指定用户签发登录链接时生成；用户打开链接后
+    由 /api/login/ticket 消费，短时效且用一次即删除。
+    """
+    __tablename__ = "login_tickets"
+
+    ticket = Column(String(64), primary_key=True, comment="登录凭证")
+    user_id = Column(Integer, nullable=False, index=True, comment="所属用户ID")
+    expires_at = Column(DateTime, nullable=False, comment="过期时间")
+    created_at = Column(DateTime, server_default=func.now(), comment="创建时间")

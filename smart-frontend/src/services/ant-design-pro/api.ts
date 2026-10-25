@@ -32,6 +32,18 @@ export async function login(body: API.LoginParams, options?: { [key: string]: an
   });
 }
 
+/** 一次性免密 ticket 登录 POST /api/login/ticket */
+export async function loginByTicket(body: { ticket: string }, options?: { [key: string]: any }) {
+  return request<{ status: 'ok' | 'error'; message?: string }>('/api/login/ticket', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    data: body,
+    ...(options || {}),
+  });
+}
+
 /** 此处后端没有提供注释 GET /api/notices */
 export async function getNotices(options?: { [key: string]: any }) {
   return request<API.NoticeIconList>('/api/notices', {
