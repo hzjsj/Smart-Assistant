@@ -23,6 +23,14 @@ from generate_test_paper.router import router as generate_test_paper_router
 from qieti.router import router as qieti_router
 from shuban.router import router as shuban_router
 from mineru.proxy import router as mineru_proxy_router
+# hermes 页面迁移：会话持久化 + 四模型对话代理
+from conversations.models import Conversation, ConversationMessage
+from hermes.models import HermesQuestionBank, HermesPaper, HermesExport
+from conversations.router import router as conversations_router
+from hermes.router import router as hermes_router
+from deepseek.router import router as deepseek_router
+from dify.router import router as dify_router
+from bailian.router import router as bailian_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -56,3 +64,8 @@ app.include_router(generate_test_paper_router)
 app.include_router(qieti_router)
 app.include_router(shuban_router)
 app.include_router(mineru_proxy_router)
+app.include_router(conversations_router)
+app.include_router(hermes_router)
+app.include_router(deepseek_router)
+app.include_router(dify_router)
+app.include_router(bailian_router)

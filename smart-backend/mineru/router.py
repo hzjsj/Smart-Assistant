@@ -18,13 +18,25 @@ from urllib.parse import urlparse
 
 import httpx
 import requests
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, File, HTTPException, Depends, Query, UploadFile
+from sqlalchemy.orm import Session
 
 from database import get_db, get_sync_db
-from auth import get_current_user
+from auth import get_current_user, get_current_userid
 from documents import crud
 
-from mineru.schemas import CallbackRequest, SubmitRequest
+from mineru.schemas import (
+    AttachmentChatRequest,
+    AttachmentUploaded,
+    CallbackRequest,
+    SubmitRequest,
+)
+from mineru.models import MineruAttachment
+from mineru.attachment_service import (
+    delete_from_oss,
+    inject_attachments,
+    save_attachment,
+)
 from mineru.service import (
     ensure_html_preview,
     handle_mineru_done,
@@ -32,6 +44,10 @@ from mineru.service import (
     sync_submitted_tasks,
 )
 from mineru.service import get_mineru_config
+# hermes 页面迁移：带附件聊天转发 + 会话采集落库
+from conversations.crud import record_user_message
+from conversations.service import stream_upstream_with_recording
+from hermes.service import HermesError, open_chat_stream
 
 router = APIRouter(prefix="/api/mineru", tags=["MinerU 解析模块"])
 
@@ -180,3 +196,135 @@ def toggle_task_favorite(
         raise HTTPException(status_code=404, detail="任务不存在")
     record = crud.toggle_mineru_favorite(db, task_id)
     return {"id": task_id, "favorite": bool(record.favorite)}
+
+
+# ===== 聊天附件与带附件聊天（hermes 页面迁移） =====
+
+
+def _attachment_response(record: MineruAttachment) -> AttachmentUploaded:
+    return AttachmentUploaded(
+        id=record.id,
+        name=record.original_name,
+        url=record.oss_url,
+        size=record.file_size,
+        ext=record.ext,
+        created_at=record.created_at,
+    )
+
+
+@router.post("/attachments", response_model=AttachmentUploaded, summary="上传聊天附件")
+async def upload_attachment(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_userid),
+):
+    """保存附件到 OSS 并落库，返回公网 URL 供聊天请求引用。"""
+    record = await save_attachment(db, user_id, file)
+    return _attachment_response(record)
+
+
+@router.get(
+    "/attachments",
+    response_model=list[AttachmentUploaded],
+    summary="当前用户附件记录",
+)
+def list_attachments(
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_userid),
+):
+    limit = max(1, min(limit, 200))
+    rows = (
+        db.query(MineruAttachment)
+        .filter(MineruAttachment.user_id == user_id)
+        .order_by(MineruAttachment.created_at.desc(), MineruAttachment.id.desc())
+        .limit(limit)
+        .all()
+    )
+    return [_attachment_response(record) for record in rows]
+
+
+@router.delete(
+    "/attachments/{attachment_id}",
+    status_code=204,
+    summary="删除附件记录与 OSS 对象",
+)
+def delete_attachment(
+    attachment_id: str,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_userid),
+):
+    record = (
+        db.query(MineruAttachment)
+        .filter(
+            MineruAttachment.id == attachment_id,
+            MineruAttachment.user_id == user_id,
+        )
+        .first()
+    )
+    if not record:
+        raise HTTPException(status_code=404, detail="附件不存在")
+    delete_from_oss(record.oss_object_key)
+    db.delete(record)
+    db.commit()
+    return None
+
+
+@router.post(
+    "/chat/completions",
+    summary="带附件的聊天：注入附件 URL 后转发 Hermes Agent",
+)
+async def chat_completions_with_attachments(
+    payload: AttachmentChatRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_userid),
+    _user=Depends(get_current_user),
+):
+    """把附件地址注入最后一条 user 消息后委托 hermes.service 转发上游。
+
+    落库 content 用注入前的原始文本（附件卡片由 content_json.attachments
+    还原）；上游流经 conversations 采集转发器——客户端断开不影响后端
+    继续读完上游并落库。
+    """
+    messages = inject_attachments(
+        [message.model_dump() for message in payload.messages],
+        [attachment.model_dump() for attachment in payload.attachments],
+    )
+    upstream_payload: dict = {"messages": messages, "stream": True, "task": "chat"}
+    if payload.model:
+        upstream_payload["model"] = payload.model
+
+    try:
+        client, response = await open_chat_stream(upstream_payload)
+    except HermesError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail) from exc
+
+    if payload.conversation_id:
+        last_user = next(
+            (m for m in reversed(payload.messages) if m.role == "user"), None
+        )
+        if last_user:
+            content_json = (
+                json.dumps(
+                    {"attachments": [a.model_dump() for a in payload.attachments]},
+                    ensure_ascii=False,
+                )
+                if payload.attachments
+                else None
+            )
+            record_user_message(
+                db,
+                user_id=user_id,
+                conversation_id=payload.conversation_id,
+                content=last_user.content,
+                model="hermes",
+                content_json=content_json,
+            )
+
+    return stream_upstream_with_recording(
+        client=client,
+        response=response,
+        user_id=user_id,
+        conversation_id=payload.conversation_id,
+        model="hermes",
+    )
