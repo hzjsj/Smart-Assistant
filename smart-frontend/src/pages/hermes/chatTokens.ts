@@ -1,0 +1,37 @@
+/** Shared by the message list, composer and Markdown renderer. */
+export const chatTokens = {
+  fontFamily:
+    'ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"',
+  codeFontFamily:
+    '"JetBrains Mono", "Cascadia Code", Consolas, "Liberation Mono", Menlo, monospace',
+  sidebarWidth: 280,
+  columnWidth: 952,
+  columnPadding: 38,
+  composerWidth: 1000,
+  composerMaxHeight: 360,
+  composerChromeHeight: 76,
+  composerShadow: [
+    '0 0 0 0 transparent',
+    '0 0 0 0 transparent',
+    '0 0 0 0 transparent',
+    '0 0 0 0 transparent',
+    '0 2px 4px rgba(116,158,243,.02)',
+    '0 4px 12px rgba(102,188,253,.04)',
+    '0 8px 24px rgba(95,178,255,.17)',
+  ].join(', '),
+  userMaxWidth: 600,
+  userRadius: 12,
+  userPadding: '9px 16px',
+  selectionLight: '#a9d6ff',
+  selectionDark: '#315779',
+  composerRadius: 24,
+  fontSize: 16,
+  lineHeight: 28,
+  listLineHeight: 24,
+  paragraphGap: 16,
+  messageGap: 20,
+  listItemGap: 8,
+  frameMs: 50,
+  minStep: 1,
+  maxStep: 5,
+} as const;

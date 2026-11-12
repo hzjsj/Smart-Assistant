@@ -120,6 +120,13 @@ export default [
     component: './mineru',
   },
   {
+    name: 'Hermes Agent',
+    icon: 'robot',
+    path: '/hermes',
+    component: './hermes',
+    layout: false,
+  },
+  {
     path: '/',
     redirect: '/welcome',
   },
