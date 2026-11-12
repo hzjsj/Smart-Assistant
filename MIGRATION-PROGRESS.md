@@ -41,6 +41,14 @@
 - `documents/` = hwzs `files/` 改名版；mineru/ 为任务管理版（无聊天附件，迁移时已补）。
 - hwzs 仓库代码**保留不删**。
 
+## env 配置复制（2026-11-13 追加）
+
+按用户要求把 hwzs 后端 `.env` 中迁移模块所需的变量复制到 `smart-backend/.env`（`.env` 已 gitignore，密钥不入库）：
+
+- 新增 11 个：`HERMES_AGENT_API_KEY/_BASE_URL/_CONNECT_TIMEOUT/_MODEL/_READ_TIMEOUT`、`DIFY_API_KEY/_BASE_URL/_CONNECT_TIMEOUT/_READ_TIMEOUT`、`DASHSCOPE_API_KEY`、`BAILIAN_APP_ID`
+- smart 已有无需复制：`DEEPSEEK_API_KEY/_BASE_URL`（chat 模块共用，迁移模块用默认值兼容）、`OSS_*`、`MINERU_*`
+- 连通性验证：Dify ✓（/api/dify/info 返回真实应用）、DeepSeek ✓（流式回复）、百炼 ✓（Agent 流式回复 OK）、Hermes ✗——上游 `101.96.197.17:8642` 主机可达但端口未监听（服务未运行，与配置无关，待上游启动即通）
+
 ## 浏览器实测记录（2026-11-13）
 
 - 登录 admin/ant.design → 跳转 /hermes，页面完整渲染（侧栏三入口 + 会话列表 + 输入区）
