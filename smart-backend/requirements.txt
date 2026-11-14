@@ -7,8 +7,9 @@ pydantic==2.10.4
 python-dotenv>=1.0.0
 bcrypt>=4.0.0
 python-multipart>=0.0.9
-langchain>=1.0
-langchain-openai>=1.0
+langchain>=1.5.0
+langchain-core>=1.8.0
+langchain-openai>=1.8.0
 alibabacloud-oss-v2>=0.2.0
 pypandoc-binary>=1.14
 python-docx>=1.2.0

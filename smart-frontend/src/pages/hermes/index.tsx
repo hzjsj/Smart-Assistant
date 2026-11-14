@@ -100,6 +100,7 @@ import {
   DEEPSEEK_CHAT_API_URL,
   DIFY_CHAT_API_URL,
   getChatErrorMessage,
+  LANGCHAIN_CHAT_API_URL,
 } from './service';
 import { useStyles } from './style';
 import {
@@ -115,6 +116,7 @@ const WELCOME_TEXTS: Record<ChatModel, string> = {
   deepseek: '你好，我是 DeepSeek，有什么可以帮你？',
   dify: '你好，我是 Dify 智能助手，有什么可以帮你？',
   bailian: '你好，我是百炼智能体，有什么可以帮你？',
+  langchain: '你好，我是 LangChain Agent，有什么可以帮你？',
 };
 const CHAT_MODEL_STORAGE_KEY = 'hermes-chat-model';
 
@@ -124,7 +126,8 @@ const readInitialChatModel = (): ChatModel => {
     return stored === 'hermes' ||
       stored === 'deepseek' ||
       stored === 'dify' ||
-      stored === 'bailian'
+      stored === 'bailian' ||
+      stored === 'langchain'
       ? stored
       : 'hermes';
   } catch {
@@ -425,7 +428,7 @@ const HermesPage: React.FC = () => {
       string,
       Partial<
         Record<
-          'plain' | 'ref' | 'deepseek' | 'dify' | 'bailian',
+          'plain' | 'ref' | 'deepseek' | 'dify' | 'bailian' | 'langchain',
           ReturnType<typeof createChatProvider>
         >
       >
@@ -520,6 +523,17 @@ const HermesPage: React.FC = () => {
         );
       }
       return entry.bailian as ReturnType<typeof createChatProvider>;
+    }
+    // LangChain Agent 模式恒走自研工具循环端点（多轮上下文由前端
+    // messages 携带，与 deepseek 同构；工具进度走 hermes.tool.progress）。
+    if (model === 'langchain') {
+      if (!entry.langchain) {
+        entry.langchain = createChatProvider(
+          LANGCHAIN_CHAT_API_URL,
+          conversationKey,
+        );
+      }
+      return entry.langchain as ReturnType<typeof createChatProvider>;
     }
     if (withAttachments && !entry.ref) {
       entry.ref = createChatProvider(ATTACHMENT_CHAT_API_URL, conversationKey);
@@ -929,6 +943,7 @@ const HermesPage: React.FC = () => {
         entry?.deepseek,
         entry?.dify,
         entry?.bailian,
+        entry?.langchain,
       ]) {
         if (provider?.request.isRequesting) provider.request.abort();
       }

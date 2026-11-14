@@ -31,6 +31,7 @@ from hermes.router import router as hermes_router
 from deepseek.router import router as deepseek_router
 from dify.router import router as dify_router
 from bailian.router import router as bailian_router
+from langchain_agent.router import router as langchain_agent_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -69,3 +70,4 @@ app.include_router(hermes_router)
 app.include_router(deepseek_router)
 app.include_router(dify_router)
 app.include_router(bailian_router)
+app.include_router(langchain_agent_router)

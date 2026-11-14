@@ -34,15 +34,26 @@ export const DIFY_CHAT_API_URL = `${SSE_API_BASE}/api/dify/chat/completions`;
  * 把事件翻译为 OpenAI 兼容流（含 session 多轮与 thinking），前端 Provider 无需区分。
  */
 export const BAILIAN_CHAT_API_URL = `${SSE_API_BASE}/api/bailian/agent/chat/completions`;
+/**
+ * LangChain Agent 端点（自研）：后端手动 tool-calling 循环直接产出
+ * OpenAI 兼容流（含工具进度事件），前端 Provider 无需区分。
+ */
+export const LANGCHAIN_CHAT_API_URL = `${SSE_API_BASE}/api/langchain/chat/completions`;
 
 /** 输入框右下角可选的对话模型。 */
-export type ChatModel = 'hermes' | 'deepseek' | 'dify' | 'bailian';
+export type ChatModel =
+  | 'hermes'
+  | 'deepseek'
+  | 'dify'
+  | 'bailian'
+  | 'langchain';
 
 export const CHAT_MODEL_LABELS: Record<ChatModel, string> = {
   hermes: 'Hermes Agent',
   deepseek: 'DeepSeek',
   dify: 'Dify',
   bailian: '百炼',
+  langchain: 'LangChain Agent',
 };
 
 type ErrorPayload = {
