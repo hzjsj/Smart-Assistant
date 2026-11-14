@@ -1,7 +1,15 @@
 // Layout-only fixture; no model calls, downloads, or backend mutations.
-const {
-  chromium,
-} = require('C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+// 跨平台解析 playwright：默认走 devDependency 安装，可用 HERMES_E2E_PLAYWRIGHT
+// 指向任意 playwright 模块路径（兼容旧缓存目录）。
+const requirePlaywright = () => {
+  try {
+    return require('playwright');
+  } catch (error) {
+    if (!process.env.HERMES_E2E_PLAYWRIGHT) throw error;
+    return require(process.env.HERMES_E2E_PLAYWRIGHT);
+  }
+};
+const { chromium } = requirePlaywright();
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -9,9 +17,12 @@ const path = require('node:path');
 (async () => {
   const artifacts = path.resolve(__dirname, '../../.artifacts');
   await fs.mkdir(artifacts, { recursive: true });
+  // 浏览器默认用 playwright 自带 Chromium；HERMES_E2E_CHROME 可指定本机 Chrome。
   const browser = await chromium.launch({
     headless: true,
-    executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    ...(process.env.HERMES_E2E_CHROME
+      ? { executablePath: process.env.HERMES_E2E_CHROME }
+      : {}),
     args: ['--no-sandbox'],
   });
   try {
@@ -77,6 +88,24 @@ const path = require('node:path');
           },
         });
       }
+      // 会话端点按应用期望的响应形状 mock：catch-all 的裸数组会让自动
+      // 建会话拿到 id: undefined，触发错误边界（页面出错）。
+      const method = route.request().method();
+      if (url.pathname === '/api/conversations' && method === 'POST')
+        return route.fulfill({
+          json: {
+            id: `mock-conv-${Date.now()}`,
+            title: '测试会话',
+            model: 'deepseek',
+            message_count: 0,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+        });
+      if (/^\/api\/conversations\/[^/]+\/messages$/.test(url.pathname))
+        return route.fulfill({
+          json: { messages: [], has_more: false, next_before_id: null },
+        });
       return route.fulfill({ json: [] });
     });
     await page.goto(
@@ -225,12 +254,21 @@ const path = require('node:path');
     await page.setViewportSize({ width: 900, height: 1000 });
     await open.click();
     await panel.waitFor();
-    assert.equal(
-      await page
-        .locator('.ant-pro-sider-fixed')
-        .evaluate((node) => node.getBoundingClientRect().width),
-      0,
-      'tablet drawer must also hide navigation completely',
+    // 900px 下 ProLayout 为桌面 flex 停靠模式（非抽屉）：隐藏即 transform
+    // 移出视口且 visibility: hidden（带 280ms 延迟生效），宽度不变。
+    // 等待收起动画完成后再断言「导航彻底不可见」。
+    await page.waitForFunction(
+      () => {
+        const sider = document.querySelector('.ant-pro-sider-fixed');
+        if (!sider) return true;
+        const rect = sider.getBoundingClientRect();
+        return (
+          getComputedStyle(sider).visibility === 'hidden' ||
+          rect.left <= -rect.width
+        );
+      },
+      undefined,
+      { timeout: 5000 },
     );
     await page.setViewportSize({ width: 390, height: 844 });
     await panel.waitFor();

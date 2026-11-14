@@ -6,7 +6,12 @@ import type { HermesChatParams } from './request';
 // SSE 流式直连后端完整路径（不走 dev/preview proxy，避免 HPM 代理缓冲）；
 // 生产部署时通过 nginx 的 proxy_buffering off 代理到后端（与 src/pages/chat 惯例一致）。
 // 普通 REST（附件/会话/题库）仍走相对路径 /api 经代理。
-const SSE_API_BASE = 'http://localhost:5000';
+// 开发环境按当前访问主机推导（localhost 与局域网 IP 手机真机均可直连 5000）；
+// 生产构建取空串走同源（nginx 反代），换环境无需改代码。
+const SSE_API_BASE =
+  process.env.NODE_ENV === 'development'
+    ? `${window.location.protocol}//${window.location.hostname}:5000`
+    : '';
 
 export const CHAT_API_URL = `${SSE_API_BASE}/api/hermes/v1/chat/completions`;
 /**

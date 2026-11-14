@@ -45,78 +45,83 @@ export const useStyles = createStyles(({ css, token, isDarkMode }) => ({
         transition: width ${WORKSPACE_MOTION_MS}ms cubic-bezier(.22, 1, .36, 1), min-width ${WORKSPACE_MOTION_MS}ms cubic-bezier(.22, 1, .36, 1), max-width ${WORKSPACE_MOTION_MS}ms cubic-bezier(.22, 1, .36, 1), flex-basis ${WORKSPACE_MOTION_MS}ms cubic-bezier(.22, 1, .36, 1), opacity 160ms ease, visibility 0s linear !important;
       }
     }
-    /* 固定侧栏恒在内容层之上：隐藏/显示的滑动过程不被白色内容区盖住。 */
-    .ant-pro-layout .ant-layout > .ant-pro-sider-fixed {
-      z-index: 104 !important;
-    }
-    /* 折叠即完整隐藏侧栏：不限视口宽度，隐藏/展开在任意窗口尺寸下一致。
-       侧栏本体 transform 滑出（豆包同款）；占位符宽度交给 ProLayout 管理，
-       内容区用负边距动画平滑左移盖住空列（避免与 ProLayout JS 宽度竞争）。 */
-    .ant-pro-layout .ant-pro-layout-container {
-      transition: margin-inline-start ${WORKSPACE_MOTION_MS}ms cubic-bezier(.22, 1, .36, 1) !important;
-    }
-    &[data-nav-hidden='true'] .ant-pro-layout .ant-pro-layout-container {
-      margin-inline-start: calc(-1 * ${chatTokens.sidebarWidth}px) !important;
-    }
-    &[data-nav-hidden='true'] .ant-pro-layout .ant-layout > .ant-pro-sider-fixed {
-      transform: translateX(calc(-100% - 28px)) !important;
-      opacity: 0; pointer-events: none;
-      visibility: hidden;
-      transition: transform ${WORKSPACE_MOTION_MS}ms cubic-bezier(.22, 1, .36, 1), opacity ${WORKSPACE_MOTION_MS}ms ease, visibility 0s linear ${WORKSPACE_MOTION_MS}ms !important;
-    }
-    /* 窥视态（收起时悬浮展开按钮）：侧栏内容以悬浮圆角面板出现在
-       头部下方（对齐豆包），四周留边、带阴影；内容区不推挤、不变暗。
-       属性选择器比隐藏规则多一层，优先级更高。
-       面板自身不滚动：改为纵向 flex 容器，内部由「入口按钮固定 +
-       会话列表内部滚动」分区（与停靠态一致，见下方 flex 链规则）。 */
-    &[data-nav-peek='true'] .ant-pro-layout .ant-layout > .ant-pro-sider-fixed {
-      position: fixed;
-      /* 与触发按钮（y 6~38）留出 6px 间距，不重叠；
-         高度自适应内容（菜单+会话列表），超过上限时由列表内部滚动。 */
-      inset-block-start: 44px;
-      inset-inline-start: 12px;
-      width: ${chatTokens.sidebarWidth}px !important;
-      min-width: ${chatTokens.sidebarWidth}px !important;
-      max-width: ${chatTokens.sidebarWidth}px !important;
-      height: auto !important;
-      max-height: calc(100dvh - 56px) !important;
-      transform: translateX(0) !important;
-      display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      border: 1px solid ${token.colorBorderSecondary};
-      border-radius: 12px;
-      background: ${token.colorBgContainer};
-      visibility: visible;
-      opacity: 1;
-      pointer-events: auto;
-      z-index: 104;
-      box-shadow:
-        0 12px 32px -8px rgba(0, 0, 0, 0.18),
-        0 4px 12px -4px rgba(0, 0, 0, 0.08);
-      transition: transform ${WORKSPACE_MOTION_MS}ms cubic-bezier(.22, 1, .36, 1), opacity 160ms ease !important;
-      transition-delay: 0s !important;
-    }
-    /* 退出淡出：鼠标移开时面板原位淡出（几何不变），
-       淡出完成后才切回隐藏态（不可见瞬移，无感）。 */
-    &[data-nav-peek='true'][data-nav-closing='true'] .ant-pro-layout .ant-layout > .ant-pro-sider-fixed {
-      opacity: 0 !important;
-      transition: opacity 150ms ease !important;
-      transition-delay: 0s !important;
-    }
-    /* 窥视捕获层：透明，覆盖触发按钮以下的区域；
-       悬浮/点击即关闭窥视（顶部按钮区除外，避免与面板间来回闪烁）。 */
-    .hermes-nav-peek-mask {
-      position: fixed;
-      inset-block-start: 38px;
-      inset-inline: 0;
-      inset-block-end: 0;
-      z-index: 103;
-      background: transparent;
-    }
-    /* 窥视面板的会话列表底部留白（仅悬浮面板，停靠侧栏不变）。 */
-    &[data-nav-peek='true'] .hermes-menu-conversations {
-      padding-block-end: 16px;
+    /* ===== 桌面专属侧栏方案（≥768px，flex 停靠布局） =====
+       移动端（<768px）ProLayout 把侧栏渲染成 inline Drawer，DOM 结构不同，
+       负边距/位移方案会把内容区推出屏幕，故全部限定在桌面断点内。 */
+    @media (min-width: 768px) {
+      /* 固定侧栏恒在内容层之上：隐藏/显示的滑动过程不被白色内容区盖住。 */
+      .ant-pro-layout .ant-layout > .ant-pro-sider-fixed {
+        z-index: 104 !important;
+      }
+      /* 折叠即完整隐藏侧栏：不限视口宽度，隐藏/展开在任意窗口尺寸下一致。
+         侧栏本体 transform 滑出（豆包同款）；占位符宽度交给 ProLayout 管理，
+         内容区用负边距动画平滑左移盖住空列（避免与 ProLayout JS 宽度竞争）。 */
+      .ant-pro-layout .ant-pro-layout-container {
+        transition: margin-inline-start ${WORKSPACE_MOTION_MS}ms cubic-bezier(.22, 1, .36, 1) !important;
+      }
+      &[data-nav-hidden='true'] .ant-pro-layout .ant-pro-layout-container {
+        margin-inline-start: calc(-1 * ${chatTokens.sidebarWidth}px) !important;
+      }
+      &[data-nav-hidden='true'] .ant-pro-layout .ant-layout > .ant-pro-sider-fixed {
+        transform: translateX(calc(-100% - 28px)) !important;
+        opacity: 0; pointer-events: none;
+        visibility: hidden;
+        transition: transform ${WORKSPACE_MOTION_MS}ms cubic-bezier(.22, 1, .36, 1), opacity ${WORKSPACE_MOTION_MS}ms ease, visibility 0s linear ${WORKSPACE_MOTION_MS}ms !important;
+      }
+      /* 窥视态（收起时悬浮展开按钮）：侧栏内容以悬浮圆角面板出现在
+         头部下方（对齐豆包），四周留边、带阴影；内容区不推挤、不变暗。
+         属性选择器比隐藏规则多一层，优先级更高。
+         面板自身不滚动：改为纵向 flex 容器，内部由「入口按钮固定 +
+         会话列表内部滚动」分区（与停靠态一致，见下方 flex 链规则）。 */
+      &[data-nav-peek='true'] .ant-pro-layout .ant-layout > .ant-pro-sider-fixed {
+        position: fixed;
+        /* 与触发按钮（y 6~38）留出 6px 间距，不重叠；
+           高度自适应内容（菜单+会话列表），超过上限时由列表内部滚动。 */
+        inset-block-start: 44px;
+        inset-inline-start: 12px;
+        width: ${chatTokens.sidebarWidth}px !important;
+        min-width: ${chatTokens.sidebarWidth}px !important;
+        max-width: ${chatTokens.sidebarWidth}px !important;
+        height: auto !important;
+        max-height: calc(100dvh - 56px) !important;
+        transform: translateX(0) !important;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid ${token.colorBorderSecondary};
+        border-radius: 12px;
+        background: ${token.colorBgContainer};
+        visibility: visible;
+        opacity: 1;
+        pointer-events: auto;
+        z-index: 104;
+        box-shadow:
+          0 12px 32px -8px rgba(0, 0, 0, 0.18),
+          0 4px 12px -4px rgba(25, 15, 15, 0.08);
+        transition: transform ${WORKSPACE_MOTION_MS}ms cubic-bezier(.22, 1, .36, 1), opacity 160ms ease !important;
+        transition-delay: 0s !important;
+      }
+      /* 退出淡出：鼠标移开时面板原位淡出（几何不变），
+         淡出完成后才切回隐藏态（不可见瞬移，无感）。 */
+      &[data-nav-peek='true'][data-nav-closing='true'] .ant-pro-layout .ant-layout > .ant-pro-sider-fixed {
+        opacity: 0 !important;
+        transition: opacity 150ms ease !important;
+        transition-delay: 0s !important;
+      }
+      /* 窥视捕获层：透明，覆盖触发按钮以下的区域；
+         悬浮/点击即关闭窥视（顶部按钮区除外，避免与面板间来回闪烁）。 */
+      .hermes-nav-peek-mask {
+        position: fixed;
+        inset-block-start: 38px;
+        inset-inline: 0;
+        inset-block-end: 0;
+        z-index: 103;
+        background: transparent;
+      }
+      /* 窥视面板的会话列表底部留白（仅悬浮面板，停靠侧栏不变）。 */
+      &[data-nav-peek='true'] .hermes-menu-conversations {
+        padding-block-end: 16px;
+      }
     }
     /* 侧栏纵向分区（停靠态与窥视悬浮面板共用）——头部菜单与
        「新建对话/智能组卷/作文助手」入口固定，会话列表在自身区域内
@@ -173,6 +178,61 @@ export const useStyles = createStyles(({ css, token, isDarkMode }) => ({
       > div:not(.ant-pro-sider-logo)
       > :not(.hermes-menu-conversations) {
       flex: 0 0 auto;
+    }
+    /* ===== 移动端抽屉（<768px）：ProLayout 将侧栏渲染为 inline Drawer，
+       sider 不再是 .ant-layout 直接子级，上方分区选择器不会命中；
+       以下选择器在抽屉内重建「入口固定 + 会话列表内部滚动」分区。 ===== */
+    @media (max-width: 767.98px) {
+      .ant-drawer-content-wrapper .ant-drawer-body {
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .ant-drawer-content-wrapper .ant-drawer-body > .ant-pro-drawer-sider,
+      .ant-drawer-content-wrapper .ant-drawer-body .ant-layout-sider {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto;
+        max-height: 100%;
+      }
+      .ant-drawer-content-wrapper .ant-layout-sider-children {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .ant-drawer-content-wrapper
+        .ant-layout-sider-children
+        > .ant-pro-sider-logo {
+        flex: 0 0 auto;
+      }
+      .ant-drawer-content-wrapper
+        .ant-layout-sider-children
+        > div:not(.ant-pro-sider-logo) {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden !important;
+      }
+      .ant-drawer-content-wrapper
+        .ant-layout-sider-children
+        > div:not(.ant-pro-sider-logo)
+        > .hermes-menu-conversations {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .ant-drawer-content-wrapper
+        .ant-layout-sider-children
+        > div:not(.ant-pro-sider-logo)
+        > :not(.hermes-menu-conversations) {
+        flex: 0 0 auto;
+      }
     }
     @media (prefers-reduced-motion: reduce) {
       .ant-pro-layout .ant-layout > div:has(+ .ant-pro-sider-fixed),

@@ -1,7 +1,15 @@
 // Run against hermes.tests.serve_workspace; all API calls are isolated test data.
-const {
-  chromium,
-} = require('C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+// 跨平台解析 playwright：默认走 devDependency 安装，可用 HERMES_E2E_PLAYWRIGHT
+// 指向任意 playwright 模块路径（兼容旧缓存目录）。
+const requirePlaywright = () => {
+  try {
+    return require('playwright');
+  } catch (error) {
+    if (!process.env.HERMES_E2E_PLAYWRIGHT) throw error;
+    return require(process.env.HERMES_E2E_PLAYWRIGHT);
+  }
+};
+const { chromium } = requirePlaywright();
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -10,9 +18,12 @@ process.env.PW_TEST_SCREENSHOT_NO_FONTS_READY = '1';
 (async () => {
   const artifacts = path.resolve(__dirname, '../../.artifacts');
   await fs.mkdir(artifacts, { recursive: true });
+  // 浏览器默认用 playwright 自带 Chromium；HERMES_E2E_CHROME 可指定本机 Chrome。
   const browser = await chromium.launch({
     headless: true,
-    executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe',
+    ...(process.env.HERMES_E2E_CHROME
+      ? { executablePath: process.env.HERMES_E2E_CHROME }
+      : {}),
     args: ['--no-sandbox'],
   });
   try {

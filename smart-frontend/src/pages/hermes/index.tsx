@@ -40,6 +40,7 @@ import React, {
   useState,
 } from 'react';
 import { ossMdTextToDocxApiOssConvertMdTextToDocxPost } from '@/services/fast-api-manage/osSwenjianshangchuan';
+import { genUuid } from '@/utils/uuid';
 import AssistantPrompts from './assistant/AssistantPrompts';
 import { ASSISTANT_PRESETS } from './assistant/presets';
 import { useAssistantMode } from './assistant/useAssistantMode';
@@ -144,7 +145,9 @@ const bubbleListStyles: BubbleListProps['styles'] = {
 };
 
 const createConversation = (): ConversationItem => ({
-  key: crypto.randomUUID(),
+  // crypto.randomUUID 仅存在于安全上下文（HTTPS/localhost），局域网 IP
+  // 的 HTTP 调试下为 undefined，页面初始化即崩；统一走降级安全的工具函数。
+  key: genUuid(),
   label: '💬 新对话',
   group: '今天',
 });
@@ -206,9 +209,12 @@ const NavExpandBar: React.FC<{ workbenchOpen?: boolean }> = ({
   workbenchOpen,
 }) => {
   const { styles } = useStyles();
-  const { navHidden, navigation } = React.useContext(WorkbenchActionsContext);
-  // 工作台视图由其工具栏的「展开导航」按钮负责，避免双入口重叠。
-  if (!navHidden || workbenchOpen) return null;
+  const { navHidden, navigation, isMobile } = React.useContext(
+    WorkbenchActionsContext,
+  );
+  // 工作台视图由其工具栏的「展开导航」按钮负责，避免双入口重叠；
+  // 移动端侧栏是抽屉，由 ProLayout 头部菜单按钮唤起，不展示悬浮展开条。
+  if (!navHidden || workbenchOpen || isMobile) return null;
   return <div className={styles.navExpandBar}>{navigation}</div>;
 };
 
@@ -1122,50 +1128,57 @@ const HermesPage: React.FC = () => {
           }}
         />
       ))}
-      <Conversations
-        items={conversations}
-        // 会话列表独立滚动区：数据多时在列表内部滚动，入口按钮保持固定。
-        className={styles.conversationList}
-        // 滚动条自动显隐：滚动时显示，停止后隐藏。
-        onScroll={handleListScroll}
-        data-scrolling={listScrolling ? 'true' : undefined}
-        // 会话项始终保持当前会话选中（组卷视图下也保留，仅灰化上方入口按钮）。
-        activeKey={activeConversationKey}
-        onActiveChange={(key) => {
-          entryNavigation.cancel();
-          paperRequest.cancel();
-          activateConversation(key);
-          setView('chat');
-        }}
-        groupable
-        menu={(conversation) => ({
-          items: [
-            { key: 'rename', label: '重命名' },
-            { key: 'delete', label: '删除', danger: true },
-          ],
-          onClick: ({ key }) => {
-            if (key === 'delete') deleteConversation(conversation.key);
-            if (key === 'rename') {
-              setRenameTarget(conversation.key);
-              setRenameValue(
-                typeof conversation.label === 'string'
-                  ? conversation.label
-                  : '',
-              );
-            }
-          },
-          // 官方 menu.trigger API：后台流式中的会话在三点左侧附加 loading。
-          trigger: (info, { originNode }) =>
-            backgroundStreamingKeys.has(info.key) ? (
-              <span className={styles.conversationStreamingBadge}>
-                <LoadingOutlined spin />
-                {originNode}
-              </span>
-            ) : (
-              originNode
-            ),
-        })}
-      />
+      {/* 侧栏在 layout 的 Provider 下游渲染：消费 context 读取 isMobile /
+          toggleNavigation，移动端选会话后自动收起抽屉回到聊天区。 */}
+      <WorkbenchActionsContext.Consumer>
+        {({ isMobile, toggleNavigation }) => (
+          <Conversations
+            items={conversations}
+            // 会话列表独立滚动区：数据多时在列表内部滚动，入口按钮保持固定。
+            className={styles.conversationList}
+            // 滚动条自动显隐：滚动时显示，停止后隐藏。
+            onScroll={handleListScroll}
+            data-scrolling={listScrolling ? 'true' : undefined}
+            // 会话项始终保持当前会话选中（组卷视图下也保留，仅灰化上方入口按钮）。
+            activeKey={activeConversationKey}
+            onActiveChange={(key) => {
+              entryNavigation.cancel();
+              paperRequest.cancel();
+              activateConversation(key);
+              setView('chat');
+              if (isMobile) toggleNavigation(false);
+            }}
+            groupable
+            menu={(conversation) => ({
+              items: [
+                { key: 'rename', label: '重命名' },
+                { key: 'delete', label: '删除', danger: true },
+              ],
+              onClick: ({ key }) => {
+                if (key === 'delete') deleteConversation(conversation.key);
+                if (key === 'rename') {
+                  setRenameTarget(conversation.key);
+                  setRenameValue(
+                    typeof conversation.label === 'string'
+                      ? conversation.label
+                      : '',
+                  );
+                }
+              },
+              // 官方 menu.trigger API：后台流式中的会话在三点左侧附加 loading。
+              trigger: (info, { originNode }) =>
+                backgroundStreamingKeys.has(info.key) ? (
+                  <span className={styles.conversationStreamingBadge}>
+                    <LoadingOutlined spin />
+                    {originNode}
+                  </span>
+                ) : (
+                  originNode
+                ),
+            })}
+          />
+        )}
+      </WorkbenchActionsContext.Consumer>
       <Modal
         title="重命名会话"
         open={renameTarget !== null}
