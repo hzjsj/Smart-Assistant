@@ -39,6 +39,11 @@ export const BAILIAN_CHAT_API_URL = `${SSE_API_BASE}/api/bailian/agent/chat/comp
  * OpenAI 兼容流（含工具进度事件），前端 Provider 无需区分。
  */
 export const LANGCHAIN_CHAT_API_URL = `${SSE_API_BASE}/api/langchain/chat/completions`;
+/**
+ * OpenClaw Gateway 端点（OpenAI 兼容直通）：多轮上下文由上游 agent
+ * 会话维护（user = 会话 ID），前端 Provider 无需区分。
+ */
+export const OPENCLAW_CHAT_API_URL = `${SSE_API_BASE}/api/openclaw/chat/completions`;
 
 /** 输入框右下角可选的对话模型。 */
 export type ChatModel =
@@ -46,7 +51,8 @@ export type ChatModel =
   | 'deepseek'
   | 'dify'
   | 'bailian'
-  | 'langchain';
+  | 'langchain'
+  | 'openclaw';
 
 export const CHAT_MODEL_LABELS: Record<ChatModel, string> = {
   hermes: 'Hermes Agent',
@@ -54,6 +60,7 @@ export const CHAT_MODEL_LABELS: Record<ChatModel, string> = {
   dify: 'Dify',
   bailian: '百炼',
   langchain: 'LangChain Agent',
+  openclaw: 'OpenClaw Agent',
 };
 
 type ErrorPayload = {
