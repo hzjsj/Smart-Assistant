@@ -7,6 +7,7 @@
 - **多后端适配架构**：6 种 LLM 对话后端按上游形态分别采用三种集成模式（OpenAI 兼容直通 / 事件流翻译适配器 / 自研工具循环），新增后端零改前端
 - **统一会话持久化层**：采集/响应解耦的 SSE 转发器——断线续播（0.8s 节流落库）、手动中止落库 aborted 态、多租户越权保护
 - **MCP 协议接入**：streamable_http（托管）/ stdio（本地）双 transport 可配，服务端故障自动降级不阻断对话
+- **大模型切题流水线**：试卷图片 → 阿里云 EduTutor 结构化切题（题干/选项/子题插图）→ 快照沉淀，前端 Canvas 画框交互
 - **自研 LangChain 工具循环**：手动 tool-calling（非 LangGraph），内置联网搜索（DeepSeek Search/Fetch 计费 API）、MinerU 文档解析、防 SSRF URL 抓取、AST 白名单计算器，工具路由规则硬编码
 - **工程化**：62 后端 + 137 前端测试用例、Docker Compose 一键启动、nginx SSE 反代配置、移动端响应式
 
@@ -40,6 +41,35 @@ graph LR
 | 百炼 | 事件流翻译适配器 | 上游会话（DashScope session） | 阿里云 Agent 应用 |
 | langchain_agent | 自研工具循环 | 消息全量携带 + 上下文截断 | 联网搜索 / 文档解析 / 可控工具流程 |
 | openclaw | OpenAI 直通 | 上游会话（user 会话键）+ 持久记忆 | 重度个人助理 / 长任务 |
+
+## 核心 AI 功能
+
+### 试卷切题（阿里云 EduTutor 大模型切题接口）
+
+试卷图片 → 结构化题库的三步流水线（`qieti/` 模块）：
+
+1. **题图上传**：试卷图片转存阿里云 OSS（kdsa 公读桶），生成可访问 URL
+2. **大模型切题**：调用 EduTutor `CutQuestions` 接口——`struct=True` 返回结构化题干/选项/小题/插图，`extract_images=True` 抽取子题临时图片链接（read_timeout 100s）
+3. **快照沉淀**：切题结果与人工框选区域保存为快照（单键快照可回读），记录分页浏览；前端支持 Canvas 画框交互与 LaTeX 公式渲染
+
+### 文档解析（MinerU · 三链路统一状态机）
+
+PDF / Word / PPT / 图片 / 网页链接 → **Markdown + HTML 预览 + 模板化 Word** 三件产物，全部转存自有 OSS（图片永久外链）：
+
+```mermaid
+graph LR
+    A[文件上传 / 网页链接] --> B[提交 MinerU<br/>extra_formats=docx,html]
+    B --> C{结果推进·双路径}
+    C -->|回调 + SHA256 签名校验| D[下载结果 zip]
+    C -->|轮询自愈<br/>回调丢失防护| D
+    D --> E[解包 → 图片转存 OSS<br/>修复 docx 图片 bbox 缩放 bug]
+    E --> F[Markdown + HTML 预览 + 模板化 Word]
+```
+
+- **三条并行链路**共享同一状态机：文档管理页、智能解析页（文件/网页双入口）、Open WebUI 兼容网关（外部系统接入）
+- **超限大文件**（>200MB / >200 页）自动拆分为批量任务，解析完成后用 python-docx 合并还原
+- **轮询自愈**：回调地址不可达（本机开发环境）时主动向 MinerU 同步任务状态，任务不会永久卡在 submitted
+- 细节文档见 [smart-backend/mineru/AGENTS.md](smart-backend/mineru/AGENTS.md)
 
 ## 快速启动
 
