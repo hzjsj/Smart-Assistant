@@ -7,6 +7,7 @@
 import ast
 import asyncio
 import ipaddress
+import os
 import re
 import socket
 from datetime import datetime
@@ -175,11 +176,144 @@ async def fetch_url(url: str) -> str:
         return f"抓取失败：网络异常（{type(exc).__name__}）"
 
 
+# ─── DeepSeek 联网工具（官方 Search/Fetch API）──────────────────────
+# 文档：https://api-docs.deepseek.com/zh-cn/guides/web_tools；按成功请求
+# 计费（0.005 元/次），失败/无结果不计费。抓取发生在 DeepSeek 服务端，
+# 因此 fetch_page 无需 SSRF 防护（URL 只是转传字符串）。
+
+_DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").rstrip("/")
+_WEB_TIMEOUT = 15.0
+_FETCH_PAGE_MAX_BYTES = 32 * 1024  # 返回给模型的正文上限
+
+
+async def _deepseek_post(path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """调用 DeepSeek Tools API（Search/Fetch），返回 JSON；HTTP 错误抛
+    ``httpx.HTTPStatusError``（status_code 供上层转成模型可读文本）。"""
+    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    async with httpx.AsyncClient(timeout=_WEB_TIMEOUT) as client:
+        response = await client.post(
+            f"{_DEEPSEEK_BASE_URL}{path}",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json=payload,
+        )
+        response.raise_for_status()
+        return response.json()
+
+
+def _web_error_text(exc: httpx.HTTPStatusError, action: str) -> str:
+    """把官方错误码转成模型可读的提示文本（不抛异常，回灌模型自行调整）。"""
+    status = exc.response.status_code
+    if status == 402:
+        return f"{action}失败：DeepSeek 账户余额不足，无法使用联网工具"
+    if status == 429:
+        return f"{action}失败：触发限速，请稍后重试"
+    if status == 403:
+        return f"{action}失败：请求被 DeepSeek 安全策略拒绝"
+    if status == 404:
+        return f"{action}失败：目标不可用或没有可提取的内容"
+    if status == 401:
+        return f"{action}失败：DEEPSEEK_API_KEY 无效"
+    message = ""
+    try:
+        message = exc.response.json().get("error", {}).get("message", "")
+    except Exception:  # noqa: BLE001 错误体解析失败时保留状态码即可
+        pass
+    return f"{action}失败：HTTP {status}" + (f"（{message}）" if message else "")
+
+
+def _format_search_results(results: list[dict[str, Any]]) -> str:
+    """把搜索结果压成模型可读的编号列表（title/url/date/summary）。"""
+    lines: list[str] = []
+    for index, item in enumerate(results, start=1):
+        title = item.get("title") or "（无标题）"
+        url = item.get("url") or ""
+        date = (item.get("date") or "")[:10]
+        summary = item.get("summary") or item.get("snippet") or ""
+        line = f"{index}. [{title}]({url})"
+        if date:
+            line += f"（发布：{date}）"
+        if summary:
+            line += f"\n   摘要：{' '.join(str(summary).split())}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+@tool
+async def web_search(
+    query: str,
+    count: int = 5,
+    ori_question: str | None = None,
+) -> str:
+    """联网搜索网页并返回结构化结果（DeepSeek 官方搜索引擎，按次计费）。
+    适用于需要实时信息、新闻、最新发布、文档站点内容的问题。
+    query 支持 site:/lang:/after:/before:/"精确短语" 等搜索语法。
+    默认只返回摘要，需要网页完整正文时再调用 fetch_page 抓对应 URL。"""
+    query = (query or "").strip()
+    if not query:
+        return "搜索失败：query 不能为空"
+    if len(query) > 128:
+        query = query[:128]
+    count = max(1, min(int(count or 5), 10))  # 文档允许 50，给模型的量 10 足够且省费
+    payload: dict[str, Any] = {"query": query, "count": count, "need_content": False}
+    if ori_question:
+        payload["ori_question"] = ori_question[:128]
+    try:
+        data = await _deepseek_post("/v1/tools/search", payload)
+    except httpx.HTTPStatusError as exc:
+        return _web_error_text(exc, "搜索")
+    except httpx.HTTPError as exc:
+        return f"搜索失败：网络异常（{type(exc).__name__}）"
+    results = data.get("results") or []
+    if not results:
+        return "搜索完成：没有找到相关结果。可尝试更换关键词或放宽搜索语法。"
+    return f"搜索完成，共 {len(results)} 条结果：\n" + _format_search_results(results)
+
+
+@tool
+async def fetch_page(url: str) -> str:
+    """抓取单个网页并以 Markdown 返回正文（DeepSeek 官方服务，按次计费，
+    质量优于免费的 fetch_url）。适用于需要阅读网页完整内容的场景；
+    仅支持含 host 的 http/https URL，不能携带用户名密码。"""
+    url = (url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return "抓取失败：仅支持 http/https URL"
+    if len(url) > 8192:
+        return "抓取失败：URL 过长"
+    if any(marker in url for marker in ("@",)):
+        return "抓取失败：URL 不能携带用户名或密码"
+    try:
+        data = await _deepseek_post("/v1/tools/fetch", {"url": url})
+    except httpx.HTTPStatusError as exc:
+        return _web_error_text(exc, "抓取")
+    except httpx.HTTPError as exc:
+        return f"抓取失败：网络异常（{type(exc).__name__}）"
+    title = data.get("title") or ""
+    content = data.get("content") or ""
+    if not content:
+        return "抓取完成：页面没有可提取的正文。"
+    truncated = len(content.encode("utf-8")) > _FETCH_PAGE_MAX_BYTES
+    if truncated:
+        content = content.encode("utf-8")[:_FETCH_PAGE_MAX_BYTES].decode("utf-8", errors="ignore")
+    header = f"# {title}\n\n" if title else ""
+    suffix = "\n\n（内容超长已截断）" if truncated else ""
+    return f"{header}{content}{suffix}"
+
+
 # ─── 注册表 ─────────────────────────────────────────────────────────
 
-TOOLS: list[BaseTool] = [current_time, calculator, fetch_url]
+# 基础工具：零外部依赖，始终注册。
+BASE_TOOLS: list[BaseTool] = [current_time, calculator, fetch_url]
+# 联网工具：调用 DeepSeek 官方 Search/Fetch API，按成功请求计费；
+# 由 enable_web_tools 开关决定是否注册（默认跟随 DEEPSEEK_API_KEY 是否配置）。
+WEB_TOOLS: list[BaseTool] = [web_search, fetch_page]
 
-TOOL_NAMES: frozenset[str] = frozenset(t.name for t in TOOLS)
+
+def get_tools(enable_web_tools: bool) -> list[BaseTool]:
+    """按开关返回本轮 agent 可用的工具列表（bind_tools 与执行查找共用）。"""
+    return BASE_TOOLS + WEB_TOOLS if enable_web_tools else list(BASE_TOOLS)
 
 
 def tool_result_snippet(result: Any, limit: int = 400) -> str:

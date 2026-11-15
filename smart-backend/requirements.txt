@@ -3,13 +3,16 @@ uvicorn==0.34.0
 sqlalchemy==2.0.36
 PyMySQL>=1.1.0
 cryptography>=42.0.0
-pydantic==2.10.4
+pydantic>=2.11.0
 python-dotenv>=1.0.0
 bcrypt>=4.0.0
 python-multipart>=0.0.9
 langchain>=1.5.0
 langchain-core>=1.8.0
 langchain-openai>=1.8.0
+langchain-mcp-adapters>=0.3
+# mcp 依赖无上限会拉入 starlette 1.x，破坏 fastapi 0.115.x（Router API 变更）
+starlette>=0.40.0,<0.42.0
 alibabacloud-oss-v2>=0.2.0
 pypandoc-binary>=1.14
 python-docx>=1.2.0
