@@ -14,7 +14,7 @@ users/
   schemas.py         # Pydantic 请求/响应模型
   crud.py            # 用户查询 + bcrypt 密码
   router.py          # /api/login/account、/api/login/outLogin、/api/currentUser、/api/login/captcha
-  sessions.py        # 会话 token 生成/校验（存库，TTL 7 天，Cookie 名 mock_token）
+  sessions.py        # 会话 token 生成/校验（存库，TTL 7 天，Cookie 名 sa_session_token）
 ```
 
 ## 启动
@@ -52,4 +52,4 @@ nohup /usr/local/mysql/bin/mysqld --no-defaults --datadir="$DATA_DIR" \
 ## 前端联调
 
 smart-frontend 开发代理已指向 `http://localhost:5000`（见 `config/proxy.ts` 的 dev 段），
-登录态由 Cookie（`mock_token`）承载，前端 `withCredentials: true`。
+登录态由 Cookie（`sa_session_token`）承载，前端 `withCredentials: true`。

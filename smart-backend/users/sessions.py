@@ -11,6 +11,9 @@ from users.models import UserSession
 
 # 会话有效期（天）。与登录 cookie 的 max_age 保持一致。
 SESSION_TTL_DAYS = 7
+# 登录态 Cookie 名与 token 前缀（鉴权点统一从此处引用，避免魔法字符串）。
+SESSION_COOKIE_NAME = "sa_session_token"
+TOKEN_PREFIX = "sa-"
 
 
 def create_session(db: Session, user_id: int) -> str:
@@ -19,7 +22,7 @@ def create_session(db: Session, user_id: int) -> str:
     登录成功后调用。同一用户可有多条会话（多端登录），各自独立过期。
     顺带清理该用户的过期会话，避免表无限膨胀。
     """
-    token = f"mock-{secrets.token_hex(16)}"
+    token = f"{TOKEN_PREFIX}{secrets.token_hex(16)}"
     expires_at = datetime.now() + timedelta(days=SESSION_TTL_DAYS)
     db.add(UserSession(token=token, user_id=user_id, expires_at=expires_at))
     db.commit()

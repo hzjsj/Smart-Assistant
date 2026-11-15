@@ -73,7 +73,7 @@ export async function removeExamApiChujuanjiExamsExamIdDelete(
   });
 }
 
-/** Generate Questions 生成试卷题目（流式输出） POST /api/chujuanji/generate */
+/** Generate Questions 生成试卷题目（流式输出）；支持带已有题目+优化建议重新生成 POST /api/chujuanji/generate */
 export async function generateQuestionsApiChujuanjiGeneratePost(
   body: API.GenerateRequest,
   options?: { [key: string]: any }

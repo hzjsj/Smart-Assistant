@@ -197,7 +197,7 @@ export const layout: RunTimeLayoutConfig = ({
 export const request: RequestConfig = {
   // 开发走 dev 代理（config/proxy.ts -> http://localhost:5000），生产同源部署
   baseURL: isDev ? '' : '/',
-  // 登录态由后端 Cookie（mock_token）承载，跨端口开发代理下必须携带凭据
+  // 登录态由后端 Cookie（sa_session_token）承载，跨端口开发代理下必须携带凭据
   withCredentials: true,
   ...errorConfig,
 };

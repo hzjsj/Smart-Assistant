@@ -134,8 +134,15 @@ class StorageTests(unittest.TestCase):
     def test_image_cache_is_scoped_and_sees_new_nested_assets(self):
         first = self.payload({"images/1.TIF": b"one"})
         second = self.payload({"images/1.TIF": b"two"})
-        self.assertEqual(render_html._image_index(str(first))["1.tif"][0], str(first / "images/1.TIF"))
-        self.assertEqual(render_html._image_index(str(second))["1.tif"][0], str(second / "images/1.TIF"))
+        # macOS 下 /tmp 是 /private/tmp 的符号链接：两侧统一 realpath 后比较
+        self.assertEqual(
+            os.path.realpath(render_html._image_index(str(first))["1.tif"][0]),
+            os.path.realpath(str(first / "images/1.TIF")),
+        )
+        self.assertEqual(
+            os.path.realpath(render_html._image_index(str(second))["1.tif"][0]),
+            os.path.realpath(str(second / "images/1.TIF")),
+        )
         (first / "images/2.TIF").write_bytes(b"new")
         self.assertIn("2.tif", render_html._image_index(str(first)))
 

@@ -92,7 +92,7 @@ class ChatRequestTests(unittest.TestCase):
     def test_http_proxy_keeps_sse_and_consumes_custom_fields_before_upstream(self):
         app = FastAPI()
         app.include_router(router)
-        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1)
+        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=1, userid="1")
         forwarded = []
         def upstream(request):
             self.assertEqual(str(request.url), "https://agent.example/v1/chat/completions")

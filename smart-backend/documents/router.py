@@ -244,7 +244,7 @@ def _process_docx_md(file_path: str, ext: str, original_name: str, base_name: st
 
 @router.post("/upload", operation_id="uploadFileApiFilesUploadPost")
 async def upload_file(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db),
-                      mock_token: str | None = Cookie(None)):
+                      session_token: str | None = Cookie(None)):
     ext = os.path.splitext(file.filename)[1].lower()
     if ext == ".doc":
         return {"status": "error", "data": {"filename": file.filename, "download_url": None},
@@ -255,7 +255,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
 
     # 获取登录用户 uid
     uid = None
-    user_id = get_session_user_id(db, mock_token)
+    user_id = get_session_user_id(db, session_token)
     if user_id is not None:
         user = db.query(User).filter_by(id=user_id).first()
         if user:
@@ -479,7 +479,7 @@ async def mineru_upload_file(
     request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    mock_token: str | None = Cookie(None),
+    session_token: str | None = Cookie(None),
 ):
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in MINERU_ALLOWED_EXTENSIONS:
@@ -490,7 +490,7 @@ async def mineru_upload_file(
         }
 
     uid = None
-    user_id = get_session_user_id(db, mock_token)
+    user_id = get_session_user_id(db, session_token)
     if user_id is not None:
         user = db.query(User).filter_by(id=user_id).first()
         if user:

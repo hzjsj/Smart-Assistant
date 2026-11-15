@@ -1,0 +1,61 @@
+# 智能助手平台一键启动：MySQL + 后端 + 前端（nginx 反代）
+# 用法：cp smart-backend/.env.example smart-backend/.env（填好密钥）后执行
+#   docker compose up -d --build
+# 访问：前端 http://localhost:8000 · 后端文档 http://localhost:5000/docs
+#
+# 说明：
+# - 容器化 MySQL 与本地 MySQL 并存（映射 3307:3306），互不影响
+# - 后端数据库连接由下方 environment 强制指向容器内 MySQL
+#   （environment 优先级高于 env_file，数据库密码与 MySQL root 密码成对配置）
+# - 其余密钥（LLM API Key 等）从 smart-backend/.env 注入，不要提交该文件
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: smart-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: smart123
+      MYSQL_DATABASE: smart_assistant
+      TZ: Asia/Shanghai
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-psmart123"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  backend:
+    build: ./smart-backend
+    container_name: smart-backend
+    env_file:
+      - ./smart-backend/.env
+    environment:
+      # 强制指向容器内 MySQL（覆盖 .env 中的 127.0.0.1/端口/密码）
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: root
+      DB_PASSWORD: smart123
+      DB_NAME: smart_assistant
+      TZ: Asia/Shanghai
+    ports:
+      - "5000:5000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build: ./smart-frontend
+    container_name: smart-frontend
+    ports:
+      - "8000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mysql_data:

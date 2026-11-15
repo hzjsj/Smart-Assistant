@@ -2,20 +2,20 @@ from fastapi import Request, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 from users.models import User
-from users.sessions import get_session_user_id
+from users.sessions import SESSION_COOKIE_NAME, get_session_user_id
 
 
 def get_current_user(
     request: Request,
     db: Session = Depends(get_db),
 ) -> User:
-    """从 mock_token Cookie 解析当前登录用户。未登录或 token 失效抛 401。
+    """从会话 Cookie 解析当前登录用户。未登录或 token 失效抛 401。
 
     通过 request.cookies 取值而非 Cookie() 声明，避免 FastAPI 把它登记进 OpenAPI
     parameters。会话校验走 users.sessions（数据库持久化，重启不丢）。
     """
-    mock_token = request.cookies.get("mock_token")
-    user_id = get_session_user_id(db, mock_token)
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    user_id = get_session_user_id(db, token)
     if user_id is None:
         raise HTTPException(status_code=401, detail="未登录或登录已过期")
     user = db.query(User).filter(User.id == user_id).first()

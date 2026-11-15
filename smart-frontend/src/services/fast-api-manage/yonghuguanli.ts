@@ -58,6 +58,21 @@ export async function logoutApiLoginOutLoginPost(
   });
 }
 
+/** Login By Ticket 一次性免密登录：校验并消费 ticket，成功则下发会话 cookie。 POST /api/login/ticket */
+export async function loginByTicketApiLoginTicketPost(
+  body: API.TicketLoginRequest,
+  options?: { [key: string]: any }
+) {
+  return request<any>("/api/login/ticket", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    data: body,
+    ...(options || {}),
+  });
+}
+
 /** List Users GET /api/users */
 export async function listUsersApiUsersGet(
   // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
@@ -123,6 +138,20 @@ export async function updateUserApiUsersUserIdPut(
     },
     params: { ...queryParams },
     data: body,
+    ...(options || {}),
+  });
+}
+
+/** Create User Login Ticket 为指定用户签发一次性免密登录 ticket（用于生成登录链接，仅管理员）。 POST /api/users/${param0}/login-ticket */
+export async function createUserLoginTicketApiUsersUserIdLoginTicketPost(
+  // 叠加生成的Param类型 (非body参数swagger默认没有生成对象)
+  params: API.createUserLoginTicketApiUsersUserIdLoginTicketPostParams,
+  options?: { [key: string]: any }
+) {
+  const { user_id: param0, ...queryParams } = params;
+  return request<any>(`/api/users/${param0}/login-ticket`, {
+    method: "POST",
+    params: { ...queryParams },
     ...(options || {}),
   });
 }

@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+**/__pycache__/
+.env
+.git/
+.gitignore
+db/
+uploads/
+hermes/storage/
+*.log
+Dockerfile
+.dockerignore

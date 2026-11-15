@@ -147,10 +147,10 @@ Open WebUI 配置 `MINERU_API_URL={MINERU_PROXY_PUBLIC_BASE}/api/mineru/proxy`�
 ```bash
 # 登录拿 cookie（本机 dev）
 TOKEN=$(curl -s -X POST http://localhost:5000/api/login/account -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"ant.design"}' -c - | grep mock_token | awk '{print $NF}')
+  -d '{"username":"admin","password":"ant.design"}' -c - | grep sa_session_token | awk '{print $NF}')
 
 # 拉任务列表（同时触发轮询自愈，最常用的推进方式）
-curl -s "http://localhost:5000/api/mineru/tasks?current=1&pageSize=10" -b "mock_token=$TOKEN"
+curl -s "http://localhost:5000/api/mineru/tasks?current=1&pageSize=10" -b "sa_session_token=$TOKEN"
 
 # 模拟回调（本机测试）：checksum = sha256(MINERU_UID + MINERU_SEED + content)
 # content = {"task_id": "...", "state": "done", "full_zip_url": "..."}

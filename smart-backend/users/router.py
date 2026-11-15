@@ -16,6 +16,7 @@ from users.sessions import (
     create_session,
     delete_session,
     get_session_user_id,
+    SESSION_COOKIE_NAME,
     SESSION_TTL_DAYS,
 )
 
@@ -51,8 +52,8 @@ def _user_to_current_user(user: User) -> CurrentUser:
 # ── 认证接口 ─────────────────────────────────────────────────────────
 
 @router.get("/api/currentUser", responses={401: {"model": ErrorResponse}})
-def get_current_user(mock_token: str | None = Cookie(None), db: Session = Depends(get_db)):
-    user_id = get_session_user_id(db, mock_token)
+def get_current_user(session_token: str | None = Cookie(None), db: Session = Depends(get_db)):
+    user_id = get_session_user_id(db, session_token)
     if user_id is None:
         return Response(
             content=ErrorResponse(
@@ -81,7 +82,7 @@ def login_account(body: LoginParams, response: Response, db: Session = Depends(g
 
     token = create_session(db, user.id)
     response.set_cookie(
-        key="mock_token",
+        key=SESSION_COOKIE_NAME,
         value=token,
         httponly=False,
         samesite="lax",
@@ -91,10 +92,10 @@ def login_account(body: LoginParams, response: Response, db: Session = Depends(g
 
 
 @router.post("/api/login/outLogin", responses={401: {"model": ErrorResponse}})
-def logout(mock_token: str | None = Cookie(None), db: Session = Depends(get_db)):
-    delete_session(db, mock_token)
+def logout(session_token: str | None = Cookie(None), db: Session = Depends(get_db)):
+    delete_session(db, session_token)
     response = Response(content="{}", media_type="application/json")
-    response.delete_cookie(key="mock_token")
+    response.delete_cookie(key=SESSION_COOKIE_NAME)
     return response
 
 
@@ -115,7 +116,7 @@ def login_by_ticket(body: TicketLoginRequest, response: Response, db: Session = 
 
     token = create_session(db, user.id)
     response.set_cookie(
-        key="mock_token",
+        key=SESSION_COOKIE_NAME,
         value=token,
         httponly=False,
         samesite="lax",

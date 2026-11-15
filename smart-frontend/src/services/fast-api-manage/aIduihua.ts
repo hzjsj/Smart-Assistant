@@ -4,7 +4,7 @@ import { request } from "@umijs/max";
 
 /** Chat Completions POST /api/chat/completions */
 export async function chatCompletionsApiChatCompletionsPost(
-  body: API.ChatCompletionRequest,
+  body: API.chat_schemas_ChatCompletionRequest,
   options?: { [key: string]: any }
 ) {
   return request<any>("/api/chat/completions", {
