@@ -33,17 +33,16 @@ export default [
     ],
   },
   {
-    path: '/welcome',
-    name: '欢迎',
-    icon: 'smile',
-    component: './Welcome',
-  },
-  {
     path: '/admin',
     name: '管理页',
     icon: 'crown',
     access: 'canAdmin',
     routes: [
+      {
+        path: '/admin/welcome',
+        name: '欢迎',
+        component: './Welcome',
+      },
       {
         path: '/admin',
         redirect: '/admin/sub-page',
@@ -52,6 +51,11 @@ export default [
         path: '/admin/sub-page',
         name: '二级管理页',
         component: './Admin',
+      },
+      {
+        name: '查询表格',
+        path: '/admin/list',
+        component: './table-list',
       },
     ],
   },
@@ -67,12 +71,6 @@ export default [
     icon: 'comment',
     path: '/chatbot',
     component: './chatbot',
-  },
-  {
-    name: '查询表格',
-    icon: 'table',
-    path: '/list',
-    component: './table-list',
   },
   {
     name: '切题',
@@ -128,7 +126,7 @@ export default [
   },
   {
     path: '/',
-    redirect: '/welcome',
+    redirect: '/document-list',
   },
   {
     component: './exception/404',
