@@ -7,7 +7,7 @@ import pypandoc
 import asyncio
 import requests
 from datetime import datetime
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, UploadFile, File, Request,Path
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request, Path
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from database import get_db, get_sync_db
@@ -15,7 +15,7 @@ from documents.models import FileRecord
 from documents.schemas import FileUpdate, FileRecordResponse, FileRequestBody, ErrorResponse
 from documents import crud
 from utils.oss_upload import upload_to_oss, upload_url_to_oss, convert_md_to_docx
-from users.sessions import get_session_user_id
+from users.sessions import get_session_user_id, SESSION_COOKIE_NAME
 from users.models import User
 from auth import get_current_user
 from documents.knowledge import process_knowledge_zip, _convert_tiff_to_png
@@ -243,8 +243,7 @@ def _process_docx_md(file_path: str, ext: str, original_name: str, base_name: st
 
 
 @router.post("/upload", operation_id="uploadFileApiFilesUploadPost")
-async def upload_file(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db),
-                      session_token: str | None = Cookie(None)):
+async def upload_file(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
     ext = os.path.splitext(file.filename)[1].lower()
     if ext == ".doc":
         return {"status": "error", "data": {"filename": file.filename, "download_url": None},
@@ -255,7 +254,7 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
 
     # 获取登录用户 uid
     uid = None
-    user_id = get_session_user_id(db, session_token)
+    user_id = get_session_user_id(db, request.cookies.get(SESSION_COOKIE_NAME))
     if user_id is not None:
         user = db.query(User).filter_by(id=user_id).first()
         if user:
@@ -479,7 +478,6 @@ async def mineru_upload_file(
     request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
-    session_token: str | None = Cookie(None),
 ):
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in MINERU_ALLOWED_EXTENSIONS:
@@ -490,7 +488,7 @@ async def mineru_upload_file(
         }
 
     uid = None
-    user_id = get_session_user_id(db, session_token)
+    user_id = get_session_user_id(db, request.cookies.get(SESSION_COOKIE_NAME))
     if user_id is not None:
         user = db.query(User).filter_by(id=user_id).first()
         if user:

@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Cookie, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.orm import Session
 from database import get_db
 from auth import require_admin
@@ -52,8 +52,8 @@ def _user_to_current_user(user: User) -> CurrentUser:
 # ── 认证接口 ─────────────────────────────────────────────────────────
 
 @router.get("/api/currentUser", responses={401: {"model": ErrorResponse}})
-def get_current_user(session_token: str | None = Cookie(None), db: Session = Depends(get_db)):
-    user_id = get_session_user_id(db, session_token)
+def get_current_user(request: Request, db: Session = Depends(get_db)):
+    user_id = get_session_user_id(db, request.cookies.get(SESSION_COOKIE_NAME))
     if user_id is None:
         return Response(
             content=ErrorResponse(
@@ -92,8 +92,8 @@ def login_account(body: LoginParams, response: Response, db: Session = Depends(g
 
 
 @router.post("/api/login/outLogin", responses={401: {"model": ErrorResponse}})
-def logout(session_token: str | None = Cookie(None), db: Session = Depends(get_db)):
-    delete_session(db, session_token)
+def logout(request: Request, db: Session = Depends(get_db)):
+    delete_session(db, request.cookies.get(SESSION_COOKIE_NAME))
     response = Response(content="{}", media_type="application/json")
     response.delete_cookie(key=SESSION_COOKIE_NAME)
     return response
