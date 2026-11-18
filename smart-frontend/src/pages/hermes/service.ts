@@ -70,7 +70,8 @@ type ErrorPayload = {
   };
 };
 
-const getResponseError = async (response: Response) => {
+/** 非 2xx SSE 响应转友好错误文案（copilot 页复用） */
+export const getResponseError = async (response: Response) => {
   let detail = '';
   try {
     const payload = (await response.clone().json()) as ErrorPayload;
@@ -99,7 +100,7 @@ const getResponseError = async (response: Response) => {
   }
   if (response.status === 429) {
     const retryAfter = response.headers.get('Retry-After');
-    const reason = detail || 'Hermes Agent 当前请求过多';
+    const reason = detail || '服务当前请求过多';
     return retryAfter
       ? `${reason}，请在 ${retryAfter} 秒后重试`
       : `${reason}，请稍后重试`;

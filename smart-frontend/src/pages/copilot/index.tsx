@@ -1,38 +1,19 @@
 import {
-  AppstoreAddOutlined,
+  ApiOutlined,
   CloseOutlined,
-  CloudUploadOutlined,
   CommentOutlined,
-  CopyOutlined,
-  DislikeOutlined,
   DownloadOutlined,
-  LikeOutlined,
-  OpenAIFilled,
-  PaperClipOutlined,
+  FileTextOutlined,
   PlusOutlined,
-  ProductOutlined,
-  ReloadOutlined,
-  ScheduleOutlined,
 } from '@ant-design/icons';
-import {
-  PageContainer,
-  ProCard,
-  ProFormGroup,
-  ProFormSwitch,
-} from '@ant-design/pro-components';
-import type {
-  AttachmentsProps,
-  BubbleListProps,
-  ConversationItemType,
-} from '@ant-design/x';
+import { PageContainer, ProCard } from '@ant-design/pro-components';
+import type { BubbleListProps } from '@ant-design/x';
 import {
   Actions,
-  Attachments,
   Bubble,
   Conversations,
   Prompts,
   Sender,
-  Suggestion,
   Think,
   Welcome,
 } from '@ant-design/x';
@@ -53,28 +34,31 @@ import {
   XRequest,
 } from '@ant-design/x-sdk';
 import {
+  Alert,
   Button,
+  Dropdown,
   Flex,
-  type GetProp,
-  type GetRef,
-  Image,
   message,
   Popover,
   Space,
+  Spin,
   Splitter,
+  Tag,
 } from 'antd';
+import type { MenuProps } from 'antd';
 import { createStyles } from 'antd-style';
-import dayjs from 'dayjs';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from '@umijs/max';
 import {
   deleteChatSession,
   listChatMessages,
+  listChatModels,
   listChatSessions,
+  type ChatModelItem,
 } from '@/services/chat';
 import { ossMdTextToDocxApiOssConvertMdTextToDocxPost } from '@/services/fast-api-manage/osSwenjianshangchuan';
 import { getDownloadUrl } from '@/services/fast-api-manage/wenjianguanli';
-import locale from './_utils/local';
+import { getChatErrorMessage, getResponseError } from '@/pages/hermes/service';
 
 const STREAMING_ACTIVE = { hasNextChunk: true, enableAnimation: true };
 const STREAMING_IDLE = { hasNextChunk: false, enableAnimation: true };
@@ -92,122 +76,35 @@ const newDraftConversation = () => ({
   isDraft: true,
 });
 
-const DEFAULT_CONVERSATIONS_ITEMS: ConversationItemType[] = [
-  newDraftConversation(),
-];
+const formatContext = (tokens: number) =>
+  tokens >= 1024 ? `${Math.round(tokens / 1024)}K` : `${tokens}`;
 
-// 使用国际化配置生成历史消息
-const generateHistoryMessages = (
-  locale: any,
-): Record<string, DefaultMessageInfo<XModelMessage>[]> => {
-  const { historyMessages } = locale;
-
-  return {
-    '5': [
-      {
-        message: { role: 'user', content: historyMessages.newSession.user },
-        status: 'success',
-      },
-      {
-        message: {
-          role: 'assistant',
-          content: historyMessages.newSession.assistant,
-        },
-        status: 'success',
-      },
-    ],
-    '4': [
-      {
-        message: {
-          role: 'user',
-          content: historyMessages.whatHasAntDesignXUpgraded.user,
-        },
-        status: 'success',
-      },
-      {
-        message: {
-          role: 'assistant',
-          content: historyMessages.whatHasAntDesignXUpgraded.assistant,
-        },
-        status: 'success',
-      },
-    ],
-    '3': [
-      {
-        message: {
-          role: 'user',
-          content: historyMessages.newAgiHybridInterface.user,
-        },
-        status: 'success',
-      },
-      {
-        message: {
-          role: 'assistant',
-          content: historyMessages.newAgiHybridInterface.assistant,
-        },
-        status: 'success',
-      },
-    ],
-    '2': [
-      {
-        message: {
-          role: 'user',
-          content: historyMessages.howToQuicklyInstallAndImportComponents.user,
-        },
-        status: 'success',
-      },
-      {
-        message: {
-          role: 'assistant',
-          content:
-            historyMessages.howToQuicklyInstallAndImportComponents.assistant,
-        },
-        status: 'success',
-      },
-    ],
-    '1': [
-      {
-        message: {
-          role: 'user',
-          content: historyMessages.whatIsAntDesignX.user,
-        },
-        status: 'success',
-      },
-      {
-        message: {
-          role: 'assistant',
-          content: historyMessages.whatIsAntDesignX.assistant,
-        },
-        status: 'success',
-      },
-    ],
-  };
+/** 模型名缩写（模型选择按钮上显示，与 chat 页保持一致） */
+const MODEL_ABBR: Record<string, string> = {
+  'deepseek-v4-flash': 'DS-Flash',
+  'deepseek-v4-pro': 'DS-Pro',
+  'deepseek-v4-flash-vision-exp': 'DS-Vision',
+  'qwen3.7-plus': 'Qwen-Plus',
+  'qwen3.8-flash': 'Qwen-Flash',
+  'qwen3.8-max': 'Qwen-Max',
+  'doubao-seed-2-1-pro-260628': 'Doubao-Pro',
+  'doubao-seed-2-1-turbo-260628': 'Doubao-Turbo',
+  'doubao-seed-evolving': 'Doubao-Evo',
 };
 
-const historyMessageFactory = (
-  conversationKey: string,
-): DefaultMessageInfo<XModelMessage>[] => {
-  const historyMessages = generateHistoryMessages(locale);
-  return historyMessages[conversationKey] || [];
+const modelAbbr = (name: string) => MODEL_ABBR[name] ?? name;
+
+const SwitchTextStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 400,
 };
 
-const MOCK_SUGGESTIONS = [
-  { label: locale.writeAReport, value: 'report' },
-  { label: locale.drawAPicture, value: 'draw' },
-  {
-    label: locale.checkSomeKnowledge,
-    value: 'knowledge',
-    icon: <OpenAIFilled />,
-    children: [
-      { label: locale.aboutReact, value: 'react' },
-      { label: locale.aboutAntDesign, value: 'antd' },
-    ],
-  },
-];
-const MOCK_QUESTIONS = [
-  locale.whatHasAntDesignXUpgraded,
-  locale.whatComponentsAreInAntDesignX,
-  locale.howToQuicklyInstallAndImportComponents,
+/** 文档问答预设问题（欢迎页一键提问） */
+const DOC_PROMPTS = [
+  { key: 'summary', description: '总结全文核心内容' },
+  { key: 'points', description: '提取文档要点，分条列出' },
+  { key: 'outline', description: '生成文档大纲与结构' },
+  { key: 'risks', description: '找出文档中的问题与风险点' },
 ];
 
 const useCopilotStyle = createStyles(({ token, css }) => {
@@ -218,7 +115,6 @@ const useCopilotStyle = createStyles(({ token, css }) => {
       background: ${token.colorBgContainer};
       color: ${token.colorText};
     `,
-    // chatHeader 样式
     chatHeader: css`
       height: 52px;
       box-sizing: border-box;
@@ -241,9 +137,11 @@ const useCopilotStyle = createStyles(({ token, css }) => {
         padding-inline-start: 0;
       }
     `,
-    // chatList 样式
+    docBanner: css`
+      padding: 8px 16px 0;
+    `,
     chatList: css`
-      flex:1;
+      flex: 1;
       overflow-y: auto;
       padding-inline: 16px;
       margin-block-start: ${token.margin}px;
@@ -257,19 +155,26 @@ const useCopilotStyle = createStyles(({ token, css }) => {
       background: ${token.colorBgTextHover};
       margin-bottom: ${token.margin}px;
     `,
-    loadingMessage: css`
-      background-image: linear-gradient(90deg, #ff6b23 0%, #af3cb8 31%, #53b6ff 89%);
-      background-size: 100% 2px;
-      background-repeat: no-repeat;
-      background-position: bottom;
+    chatPrompts: css`
+      margin-inline: ${token.margin}px;
     `,
-    // chatSend 样式
     chatSend: css`
       padding: ${token.padding}px;
     `,
-    speechButton: css`
-      font-size: 18px;
-      color: ${token.colorText} !important;
+    senderFooter: css`
+      padding-top: 8px;
+    `,
+    previewLoading: css`
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      min-height: 300px;
+    `,
+    previewEmpty: css`
+      color: ${token.colorTextSecondary};
+      text-align: center;
+      padding: 40px 0;
     `,
   };
 });
@@ -292,70 +197,45 @@ const ThinkComponent = React.memo((props: ComponentProps) => {
   );
 });
 
-/**
- * 🔔 Please replace the BASE_URL, MODEL with your own values.
- */
-const providerCaches = new Map<string, DeepSeekChatProvider>();
-const providerFactory = (conversationKey: string) => {
-  if (!providerCaches.get(conversationKey)) {
-    providerCaches.set(
-      conversationKey,
-      new DeepSeekChatProvider({
-        request: XRequest<
-          XModelParams,
-          Partial<Record<SSEFields, XModelResponse>>
-        >(
-          // SSE 直连后端完整路径（不走 proxy，避免 HPM 缓冲）
-          'http://localhost:5000/api/chat/completions',
-          {
-            manual: true,
-            params: {
-              stream: true,
-            },
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          },
-        ),
-      }),
-    );
-  }
-  return providerCaches.get(conversationKey);
-};
+// SSE 直连后端完整路径（不走 proxy，避免 HPM 缓冲）。
+// 开发环境按当前访问主机推导（localhost 与局域网 IP 手机真机均可直连 5000）；
+// 生产构建取空串走同源（nginx 反代），换环境无需改代码（与 hermes 页惯例一致）。
+const SSE_API_BASE =
+  process.env.NODE_ENV === 'development'
+    ? `${window.location.protocol}//${window.location.hostname}:5000`
+    : '';
+const CHAT_COMPLETIONS_URL = `${SSE_API_BASE}/api/chat/completions`;
 
-interface CopilotProps {
-  copilotOpen: boolean;
-  setCopilotOpen: (open: boolean) => void;
-  mdValue: string;
-  mdUrl: string;
-}
-const getMarkdownTOWord = async (content: string) => {
+/** 消息回答转 Word 下载（失败抛错由调用方提示） */
+const downloadMessageAsDocx = async (content: string, docName: string) => {
+  const baseName = docName.replace(/\.(md|markdown)$/i, '') || '文档';
   const result = await ossMdTextToDocxApiOssConvertMdTextToDocxPost({
     md_content: content,
-    filename: 'word 文档',
+    filename: baseName,
   });
-  if (result.url) {
-    const response = await fetch(result.url);
-    if (!response.ok) throw new Error('下载失败');
-    const fileBlob = await response.blob();
-    const blob = new Blob([fileBlob], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    });
-    const blobUrl = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = 'word 文档';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(blobUrl);
-  }
+  if (!result?.url) throw new Error('转换服务未返回下载地址');
+  const response = await fetch(result.url);
+  if (!response.ok) throw new Error('下载失败');
+  const fileBlob = await response.blob();
+  const blob = new Blob([fileBlob], {
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  });
+  const blobUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = `${baseName}.docx`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(blobUrl);
 };
+
 const Footer: React.FC<{
   id?: string;
   content: string;
   status?: string;
-}> = ({ id, content, status }) => {
+  docName: string;
+}> = ({ id, content, status, docName }) => {
   const resultContent = content
     .split(/<\/think>/i)
     .pop()!
@@ -367,10 +247,20 @@ const Footer: React.FC<{
     },
     {
       key: 'download',
-      label: '下载',
+      label: '下载 Word',
       icon: <DownloadOutlined />,
-      onItemClick: () => {
-        getMarkdownTOWord(resultContent);
+      onItemClick: async () => {
+        const key = `docx-${id}`;
+        try {
+          message.loading({ content: '正在转换 Word...', key, duration: 0 });
+          await downloadMessageAsDocx(resultContent, docName);
+          message.success({ content: '已下载', key });
+        } catch (error) {
+          message.error({
+            content: (error as Error)?.message || '下载失败',
+            key,
+          });
+        }
       },
     },
   ];
@@ -379,47 +269,19 @@ const Footer: React.FC<{
   ) : null;
 };
 
-const role: BubbleListProps['role'] = {
-  assistant: {
-    placement: 'start',
-    footer: (content, { status, key }) => (
-      <Footer content={content} status={status} id={key as string} />
-    ),
-    // footer: (
-    //   <div style={{ display: 'flex' }}>
-    //     <Button type="text" size="small" icon={<ReloadOutlined />} />
-    //     <Button type="text" size="small" icon={<CopyOutlined />} />
-    //     <Button type="text" size="small" icon={<LikeOutlined />} />
-    //     <Button type="text" size="small" icon={<DislikeOutlined />} />
-    //   </div>
-    // ),
-    contentRender: (
-      content: string,
-      info: { status?: string; loading?: boolean },
-    ) => {
-      if (info?.loading || !content) return undefined;
-      return (
-        <XMarkdown
-          streaming={
-            info?.status === 'updating' ? STREAMING_ACTIVE : STREAMING_IDLE
-          }
-          config={{ extensions: Latex() }}
-          paragraphTag="div"
-          content={content}
-          components={{
-            think: ThinkComponent,
-          }}
-        />
-      );
-    },
-  },
-  user: { placement: 'end' },
-};
+interface CopilotProps {
+  copilotOpen: boolean;
+  setCopilotOpen: (open: boolean) => void;
+  /** 文档 md 的 OSS 地址；为空表示未找到解析产物，聊天不注入文档 */
+  mdUrl: string;
+  docName: string;
+  docLoading: boolean;
+}
 
 const Copilot = (props: CopilotProps) => {
-  const { copilotOpen, setCopilotOpen, mdValue, mdUrl } = props;
+  const { copilotOpen, setCopilotOpen, mdUrl, docName, docLoading } = props;
   const { styles } = useCopilotStyle();
-  const attachmentsRef = useRef<GetRef<typeof Attachments>>(null);
+  const docReady = Boolean(mdUrl);
 
   // ==================== State ====================
   // 初始为空，挂载后从后端拉取会话列表（持久化到 chat_sessions 表）
@@ -436,10 +298,10 @@ const Copilot = (props: CopilotProps) => {
     defaultConversations: [initialDraft],
     defaultActiveConversationKey: initialDraft.key,
   });
-  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
-  const [files, setFiles] = useState<GetProp<AttachmentsProps, 'items'>>([]);
-
   const [inputValue, setInputValue] = useState('');
+  const [models, setModels] = useState<ChatModelItem[]>([]);
+  const [selectedModel, setSelectedModel] = useState('');
+  const [enableThinking, setEnableThinking] = useState(false);
 
   const listRef = useRef<BubbleListRef>(null);
 
@@ -486,32 +348,99 @@ const Copilot = (props: CopilotProps) => {
     }
   }, [setConvList, setActiveConversationKey]);
 
-  // 初始化：拉取会话列表
+  // 初始化：拉取会话列表与模型注册表
   useEffect(() => {
     refreshSessions();
   }, [refreshSessions]);
 
+  useEffect(() => {
+    void (async () => {
+      try {
+        const res = await listChatModels();
+        if (res?.success) {
+          setModels(res.data ?? []);
+          setSelectedModel((res as any).default ?? res.data?.[0]?.name ?? '');
+        }
+      } catch {
+        // 模型列表失败时选择器置空
+      }
+    })();
+  }, []);
+
+  const currentModel = useMemo(
+    () => models.find((m) => m.name === selectedModel),
+    [models, selectedModel],
+  );
+
+  // 模型选择菜单（按平台分组；菜单项显示全名+上下文，按钮上显示缩写）
+  const modelMenuItems: MenuProps['items'] = useMemo(() => {
+    const groups = new Map<string, ChatModelItem[]>();
+    models.forEach((m) => {
+      const list = groups.get(m.providerLabel) ?? [];
+      list.push(m);
+      groups.set(m.providerLabel, list);
+    });
+    return [...groups.entries()].map(([label, list]) => ({
+      key: label,
+      label,
+      type: 'group' as const,
+      children: list.map((m) => ({
+        key: m.name,
+        label: `${modelAbbr(m.name)} · ${m.name}（${formatContext(m.contextTokens)}）`,
+      })),
+    }));
+  }, [models]);
+
   // ==================== Runtime ====================
+  // 单例 provider：XRequest 跨源直连后端需 credentials:'include' 携带登录 cookie，
+  // 否则 /api/chat/completions 鉴权 401；onResponse 把非 2xx 转成友好错误文案。
+  const provider = useMemo(
+    () =>
+      new DeepSeekChatProvider({
+        request: XRequest<
+          XModelParams,
+          Partial<Record<SSEFields, XModelResponse>>
+        >(CHAT_COMPLETIONS_URL, {
+          manual: true,
+          params: {
+            stream: true,
+          },
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          middlewares: {
+            onResponse: async (response) => {
+              if (!response.ok) {
+                throw new Error(await getResponseError(response));
+              }
+              return response;
+            },
+          },
+        }),
+      }),
+    [],
+  );
 
   const { onRequest, messages, isRequesting, abort } = useXChat({
-    provider: providerFactory(activeConversationKey), // every conversation has its own provider
+    provider,
     conversationKey: activeConversationKey,
     defaultMessages: loadDefaultMessages as any,
     requestPlaceholder: () => {
       return {
-        content: locale.noData,
+        content: '思考中...',
         role: 'assistant',
       };
     },
-    requestFallback: (_, { error, errorInfo, messageInfo }) => {
+    requestFallback: (_, { error, messageInfo }) => {
       if (error.name === 'AbortError') {
         return {
-          content: messageInfo?.message?.content || locale.requestAborted,
+          content: messageInfo?.message?.content || '请求已中止',
           role: 'assistant',
         };
       }
       return {
-        content: errorInfo?.error?.message || locale.requestFailed,
+        content: getChatErrorMessage(error),
         role: 'assistant',
       };
     },
@@ -528,13 +457,18 @@ const Copilot = (props: CopilotProps) => {
 
   // ==================== Event ====================
   const handleUserSubmit = (val: string) => {
+    if (!val) return;
+    if (!selectedModel) {
+      message.warning('模型列表加载中，请稍候');
+      return;
+    }
     onRequest({
       messages: [{ role: 'user', content: val }],
       md_urls: mdUrl ? [mdUrl] : [],
       // 后端 /api/chat/completions 需要的会话与模型参数
       chatId: activeConversationKey,
-      model: 'deepseek-v4-flash',
-      enableThinking: true,
+      model: selectedModel,
+      enableThinking,
     });
     listRef.current?.scrollTo({ top: 'bottom' });
 
@@ -548,17 +482,10 @@ const Copilot = (props: CopilotProps) => {
     }
   };
 
-  const onPasteFile = (files: FileList) => {
-    for (const file of files) {
-      attachmentsRef.current?.upload(file);
-    }
-    setAttachmentsOpen(true);
-  };
-
   // ==================== Nodes ====================
   const chatHeader = (
     <div className={styles.chatHeader}>
-      <div className={styles.headerTitle}>✨ {locale.aiCopilot}</div>
+      <div className={styles.headerTitle}>✨ AI 助手</div>
       <Space size={0}>
         <Button
           type="text"
@@ -569,7 +496,7 @@ const Copilot = (props: CopilotProps) => {
               addConversation(draft);
               setActiveConversationKey(draft.key);
             } else {
-              message.error(locale.itIsNowANewConversation);
+              message.error('当前已经是新会话');
             }
           }}
           className={styles.headerButton}
@@ -633,6 +560,62 @@ const Copilot = (props: CopilotProps) => {
       </Space>
     </div>
   );
+
+  // 文档引用横幅：有解析产物时显示引用徽标，否则警示聊天不基于文档
+  const docBanner = docReady ? (
+    <div className={styles.docBanner}>
+      <Tag icon={<FileTextOutlined />} color="blue">
+        已引用文档：{docName}
+      </Tag>
+    </div>
+  ) : docLoading ? null : (
+    <div className={styles.docBanner}>
+      <Alert
+        type="warning"
+        showIcon
+        banner
+        message="未检测到该文档的解析结果，AI 将不基于文档内容回答"
+      />
+    </div>
+  );
+
+  const role: BubbleListProps['role'] = useMemo(
+    () => ({
+      assistant: {
+        placement: 'start',
+        footer: (content, { status, key }) => (
+          <Footer
+            content={content}
+            status={status}
+            id={key as string}
+            docName={docName}
+          />
+        ),
+        contentRender: (
+          content: string,
+          info: { status?: string; loading?: boolean },
+        ) => {
+          if (info?.loading || !content) return undefined;
+          return (
+            <XMarkdown
+              streaming={
+                info?.status === 'updating' ? STREAMING_ACTIVE : STREAMING_IDLE
+              }
+              config={{ extensions: Latex() }}
+              paragraphTag="div"
+              content={content}
+              components={{
+                think: ThinkComponent,
+              }}
+            />
+          );
+        },
+      },
+      user: { placement: 'end' },
+    }),
+    [docName],
+  );
+
   const chatList = (
     <div className={styles.chatList}>
       {messages?.length ? (
@@ -648,116 +631,106 @@ const Copilot = (props: CopilotProps) => {
           role={role}
         />
       ) : (
-        /** 没有消息时的 welcome */
+        /** 没有消息时的 welcome + 文档预设问题 */
         <>
           <Welcome
             variant="borderless"
             title={`你好，我是徽文 AI 助手`}
-            description={`有什么可以帮你~~`}
+            description={
+              docReady
+                ? `已加载《${docName}》，可以针对文档内容提问~~`
+                : `有什么可以帮你~~`
+            }
             className={styles.chatWelcome}
           />
-
-          {/* <Prompts
-            vertical
-            title={`我可以帮助：`}
-            items={MOCK_QUESTIONS.map((i) => ({ key: i, description: i }))}
-            onItemClick={(info) => handleUserSubmit(info?.data?.description as string)}
-            styles={{
-              title: { fontSize: 14 },
-            }}
-          /> */}
+          {docReady && (
+            <Prompts
+              vertical
+              title="试试这样问："
+              items={DOC_PROMPTS}
+              onItemClick={(info) =>
+                handleUserSubmit(info?.data?.description as string)
+              }
+              className={styles.chatPrompts}
+            />
+          )}
         </>
       )}
     </div>
   );
-  const sendHeader = (
-    <Sender.Header
-      title={locale.uploadFile}
-      styles={{ content: { padding: 0 } }}
-      open={attachmentsOpen}
-      onOpenChange={setAttachmentsOpen}
-      forceRender
-    >
-      <Attachments
-        ref={attachmentsRef}
-        beforeUpload={() => false}
-        items={files}
-        onChange={({ fileList }) => setFiles(fileList)}
-        placeholder={(type) =>
-          type === 'drop'
-            ? { title: locale.dropFileHere }
-            : {
-                icon: <CloudUploadOutlined />,
-                title: locale.uploadFiles,
-                description: locale.clickOrDragFilesToThisAreaToUpload,
-              }
-        }
-      />
-    </Sender.Header>
-  );
+
   const chatSender = (
     <Flex vertical gap={12} className={styles.chatSend}>
-      {/* <Flex gap={12} align="center">
-        <Button
-          icon={<ScheduleOutlined />}
-          onClick={() => handleUserSubmit('What has Ant Design X upgraded?')}
-        >
-          {locale.upgrades}
-        </Button>
-        <Button
-          icon={<ProductOutlined />}
-          onClick={() => handleUserSubmit('What component assets are available in Ant Design X?')}
-        >
-          {locale.components}
-        </Button>
-        <Button icon={<AppstoreAddOutlined />}>{locale.more}</Button>
-      </Flex> */}
-      {/** 输入框 */}
-      <Suggestion
-        items={MOCK_SUGGESTIONS}
-        onSelect={(itemVal) => setInputValue(`[${itemVal}]:`)}
-      >
-        {({ onTrigger, onKeyDown }) => (
-          <Sender
-            loading={isRequesting}
-            value={inputValue}
-            onChange={(v) => {
-              onTrigger(v === '/');
-              setInputValue(v);
-            }}
-            onSubmit={() => {
-              handleUserSubmit(inputValue);
-              setInputValue('');
-            }}
-            onCancel={() => {
-              abort();
-            }}
-            allowSpeech
-            placeholder={locale.askOrInputUseSkills}
-            onKeyDown={onKeyDown}
-            //header={sendHeader}
-            // prefix={
-            //   <Button
-            //     type="text"
-            //     icon={<PaperClipOutlined style={{ fontSize: 18 }} />}
-            //     onClick={() => setAttachmentsOpen(!attachmentsOpen)}
-            //   />
-            // }
-            onPasteFile={onPasteFile}
-          />
+      {/** 输入框：footer 提供模型选择与深度思考开关 */}
+      <Sender
+        loading={isRequesting}
+        value={inputValue}
+        onChange={setInputValue}
+        onSubmit={() => {
+          handleUserSubmit(inputValue);
+          setInputValue('');
+        }}
+        onCancel={() => {
+          abort();
+        }}
+        placeholder="针对文档提问，Enter 发送，Shift+Enter 换行"
+        footer={() => (
+          <Flex
+            justify="space-between"
+            align="center"
+            className={styles.senderFooter}
+          >
+            <Flex gap="small" align="center">
+              {/* 模型选择：Dropdown + 缩写按钮 */}
+              <Dropdown
+                menu={{
+                  selectedKeys: [selectedModel],
+                  onClick: ({ key }) => {
+                    setSelectedModel(key);
+                    const meta = models.find((m) => m.name === key);
+                    if (!meta?.supportsThinking) setEnableThinking(false);
+                  },
+                  items: modelMenuItems,
+                }}
+              >
+                <Sender.Switch value={false} icon={<ApiOutlined />}>
+                  {modelAbbr(selectedModel) || '选择模型'}
+                </Sender.Switch>
+              </Dropdown>
+              {/* 深度思考开关（仅思考模型显示） */}
+              {currentModel?.supportsThinking && (
+                <Sender.Switch
+                  value={enableThinking}
+                  checkedChildren={
+                    <>
+                      深度思考:<span style={SwitchTextStyle}>开</span>
+                    </>
+                  }
+                  unCheckedChildren={
+                    <>
+                      深度思考:<span style={SwitchTextStyle}>关</span>
+                    </>
+                  }
+                  onChange={(checked: boolean) => setEnableThinking(checked)}
+                />
+              )}
+            </Flex>
+          </Flex>
         )}
-      </Suggestion>
+      />
     </Flex>
   );
 
   return (
-    // <div className={styles.copilotChat} style={{ width: copilotOpen ? 400 : 0 }}>
     <div
       className={styles.copilotChat}
       style={{ width: '100%', height: '100%' }}
     >
       {/** 对话区 - header */}
       {chatHeader}
+
+      {/** 对话区 - 文档引用横幅 */}
+      {docBanner}
 
       {/** 对话区 - 消息列表 */}
       {chatList}
@@ -770,34 +743,6 @@ const Copilot = (props: CopilotProps) => {
 
 const useWorkareaStyle = createStyles(({ token, css }) => {
   return {
-    copilotWrapper: css`
-      width: 100%;
-      height: 100vh;
-      display: flex;
-    `,
-    workarea: css`
-      flex: 1;
-      background: ${token.colorBgLayout};
-      display: flex;
-      flex-direction: column;
-    `,
-    workareaHeader: css`
-      box-sizing: border-box;
-      height: 52px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 48px 0 28px;
-      border-bottom: 1px solid ${token.colorBorder};
-    `,
-    headerTitle: css`
-      font-weight: 600;
-      font-size: 15px;
-      color: ${token.colorText};
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    `,
     headerButton: css`
       background-image: linear-gradient(78deg, #8054f2 7%, #3895da 95%);
       border-radius: 12px;
@@ -815,120 +760,110 @@ const useWorkareaStyle = createStyles(({ token, css }) => {
         opacity: 0.8;
       }
     `,
-    workareaBody: css`
-      flex: 1;
-      padding: ${token.padding}px;
-      background: ${token.colorBgContainer};
-      border-radius: ${token.borderRadius}px;
-      min-height: 0;
-    `,
-    bodyContent: css`
-      overflow: auto;
-      height: 100%;
-      padding-right: 10px;
-    `,
-    bodyText: css`
-      color: ${token.colorText};
-      padding: 8px;
-    `,
   };
 });
 
 const CopilotDemo = () => {
   const { styles: workareaStyles } = useWorkareaStyle();
+  const { styles: previewStyles } = useCopilotStyle();
 
   // ==================== State =================
   const [copilotOpen, setCopilotOpen] = useState(true);
 
   // ==================== markdown content =================
-  // 1. 真正用于请求的 mdUrl 默认为空字符串。这样页面第一次加载时，就不会触发请求
+  // 文档加载状态机：loading（请求中）/ error（失败可重试）/ mdValue（正文）
   const [mdUrl, setMdUrl] = useState('');
-
-  // 2. 输入框的初始值，可以预设一个你想要的默认地址，方便用户直接点击
   const [mdValue, setMdValue] = useState('');
+  const [mdLoading, setMdLoading] = useState(false);
+  const [mdError, setMdError] = useState('');
+  const [fileName, setFileName] = useState('未知文档');
+  const params = useParams<{ id: string }>();
+  const fileId = Number(params.id);
+  const fileIdValid = Boolean(params.id) && Number.isFinite(fileId);
+  const loadAbortRef = useRef<AbortController | null>(null);
 
-  const [fileName, setFileName] = useState('文件名称');
-  const params = useParams();
-
-  useEffect(() => {
-    console.log('params', params);
-
-    if (!params.id) return;
-
-    const fetchDownloadUrl = async () => {
-      try {
-        const result = await getDownloadUrl({ fileId: Number(params.id) });
-        // console.log('下载链接:', result);
-        setMdUrl(result?.oss_md_url);
-      } catch (error) {
-        console.error('获取下载链接失败:', error);
-      } finally {
-      }
-    };
-
-    fetchDownloadUrl();
-  }, [params.id]);
-
-  useEffect(() => {
-    // 💡 关键拦截：第一次加载时 mdUrl 为空，直接 return，不执行后续的 fetch 逻辑
-    if (!mdUrl) return;
-
+  // 加载文档：下载链接（拿 oss_md_url 与文件名）→ 拉取 md 正文
+  const loadDocument = useCallback(async () => {
+    if (!fileIdValid) {
+      setMdError('无效的文档 ID');
+      return;
+    }
+    loadAbortRef.current?.abort();
     const controller = new AbortController();
-
-    const fetchMarkdown = async () => {
-      try {
-        const res = await fetch(mdUrl, { signal: controller.signal });
-
-        if (!res.ok) {
-          throw new Error(`请求失败，状态码: ${res.status}`);
-        }
-
-        const text = await res.text();
-
-        // 💡 核心改动：解析 URL 获取文件名
-        let fileName = '未知文件';
-        try {
-          const urlObj = new URL(mdUrl);
-          // 获取路径的最后一部分作为文件名
-          fileName = urlObj.pathname.split('/').pop() || '文件名称';
-        } catch (e) {
-          // 如果输入的不是标准 URL，做个兜底字符串切割
-          fileName = mdUrl.split('/').pop() || '文件名称';
-        }
-        fileName = decodeURIComponent(fileName);
-        setFileName(fileName);
-        setMdValue(text);
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') {
-          console.log(`已取消对上一个 URL 的请求`);
-        } else {
-          console.error('❌ 读取 MD 文件出错:', (err as Error));
-        }
+    loadAbortRef.current = controller;
+    setMdError('');
+    setMdValue('');
+    setMdUrl('');
+    setMdLoading(true);
+    try {
+      const result = await getDownloadUrl({ fileId });
+      setFileName(result?.original_name || '未知文档');
+      const url = result?.oss_md_url as string | undefined;
+      if (!url) {
+        setMdError('该文档暂无 Markdown 解析结果，可先在文档管理完成解析');
+        return;
       }
-    };
+      setMdUrl(url);
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) throw new Error(`请求失败，状态码: ${res.status}`);
+      const text = await res.text();
+      setMdValue(text);
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        setMdError('读取文档内容失败，请重试');
+      }
+    } finally {
+      if (!controller.signal.aborted) setMdLoading(false);
+    }
+  }, [fileId, fileIdValid]);
 
-    fetchMarkdown();
-
+  useEffect(() => {
+    void loadDocument();
     return () => {
-      controller.abort();
+      loadAbortRef.current?.abort();
     };
-  }, [mdUrl]); // 只有点击按钮改变了 mdUrl 的值，这里才会执行
+  }, [loadDocument]);
 
   // ==================== Render =================
+  const previewBody = mdError ? (
+    <Alert
+      type="error"
+      showIcon
+      message={mdError}
+      action={
+        <Button size="small" onClick={() => void loadDocument()}>
+          重试
+        </Button>
+      }
+    />
+  ) : mdLoading ? (
+    <div className={previewStyles.previewLoading}>
+      <Spin tip="正在加载文档...">
+        <div style={{ minHeight: 120 }} />
+      </Spin>
+    </div>
+  ) : mdValue ? (
+    <XMarkdown config={{ extensions: Latex() }} content={mdValue} />
+  ) : (
+    <div className={previewStyles.previewEmpty}>
+      该文档暂无 Markdown 解析结果
+    </div>
+  );
+
   return (
     <PageContainer
       title={false}
+      // 本页无页头（title=false），children 直接占满整屏；
+      // 原先 calc(100vh - 120px) 按有页头假设硬编码，导致底部空 120px 不铺满
       childrenContentStyle={{
         paddingBlock: 0,
-        height: 'calc(100vh - 120px)',
+        height: '100vh',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
       }}
     >
-      {/* <div className={workareaStyles.copilotWrapper}> */}
-      {/** 左侧工作区 */}
-      <Splitter>
+      <Splitter style={{ height: '100%' }}>
         <Splitter.Panel
           defaultSize="70%"
           min="50%"
@@ -938,20 +873,21 @@ const CopilotDemo = () => {
             title={fileName}
             variant="outlined"
             type="inner"
+            style={{ height: '100%' }}
+            // body 伸展撑满卡片并内部滚动（默认 flex 0 1 auto 不伸展）
+            bodyStyle={{ flex: 1, minHeight: 0, overflow: 'auto' }}
             extra={
-              <>
-                {!copilotOpen && (
-                  <div
-                    onClick={() => setCopilotOpen(true)}
-                    className={workareaStyles.headerButton}
-                  >
-                    ✨ AI 助手
-                  </div>
-                )}
-              </>
+              !copilotOpen && (
+                <div
+                  onClick={() => setCopilotOpen(true)}
+                  className={workareaStyles.headerButton}
+                >
+                  ✨ AI 助手
+                </div>
+              )
             }
           >
-            <XMarkdown config={{ extensions: Latex() }} content={mdValue} />
+            {previewBody}
           </ProCard>
         </Splitter.Panel>
         {copilotOpen && (
@@ -959,8 +895,9 @@ const CopilotDemo = () => {
             <Copilot
               copilotOpen={copilotOpen}
               setCopilotOpen={setCopilotOpen}
-              mdValue={mdValue}
               mdUrl={mdUrl}
+              docName={fileName}
+              docLoading={mdLoading}
             />
           </Splitter.Panel>
         )}
