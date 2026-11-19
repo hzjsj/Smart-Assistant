@@ -36,7 +36,12 @@ import {
   message,
 } from 'antd';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ConversationSkeleton,
+  MessageSkeleton,
+} from '@/components/ChatSkeleton';
 import LottieThinkingIcon from '@/components/LottieThinkingIcon';
+import { useDelayedLoading } from '@/hooks/useDelayedLoading';
 import {
   type ChatConversationItem,
   type ChatModelItem,
@@ -273,6 +278,9 @@ const ChatPage: React.FC = () => {
   );
   const [activeConversationKey, setActiveConversationKey] = useState('');
 
+  // 骨架屏：仅首屏会话列表加载时立即显示（历史消息切换用延迟骨架，避免瞬闪）
+  const [bootLoading, setBootLoading] = useState(true);
+
   const provider = useMemo(() => createChatProvider() as any, []);
 
   // 切换会话时由 useXChat 按 conversationKey 拉取后端历史
@@ -300,25 +308,45 @@ const ChatPage: React.FC = () => {
     [],
   );
 
-  const { onRequest, abort, isRequesting, messages, onReload, setMessage } =
-    useXChat<ChatMessage>({
-      provider,
-      conversationKey: activeConversationKey,
-      requestPlaceholder: { role: 'assistant', content: '' },
-      defaultMessages: loadDefaultMessages as any,
-      requestFallback: (_params, { error, messageInfo }) => {
-        if (error.name === 'AbortError') {
-          return {
-            content: messageInfo?.message?.content || '请求已中止',
-            role: 'assistant',
-          };
-        }
+  const {
+    onRequest,
+    abort,
+    isRequesting,
+    messages,
+    isDefaultMessagesRequesting,
+    onReload,
+    setMessage,
+  } = useXChat<ChatMessage>({
+    provider,
+    conversationKey: activeConversationKey,
+    requestPlaceholder: { role: 'assistant', content: '' },
+    defaultMessages: loadDefaultMessages as any,
+    requestFallback: (_params, { error, messageInfo }) => {
+      if (error.name === 'AbortError') {
         return {
-          content: '请求失败，请重试！',
+          content: messageInfo?.message?.content || '请求已中止',
           role: 'assistant',
         };
-      },
-    });
+      }
+      return {
+        content: '请求失败，请重试！',
+        role: 'assistant',
+      };
+    },
+  });
+
+  // 切换会话时保留上一次的消息内容做过渡，避免出现空白帧
+  const lastMessagesRef = React.useRef(messages);
+  if (messages.length) lastMessagesRef.current = messages;
+  const displayMessages =
+    messages.length > 0
+      ? messages
+      : isDefaultMessagesRequesting
+        ? lastMessagesRef.current
+        : messages;
+  const hasDisplayMessages = displayMessages.length > 0;
+  // 有旧消息时，加载超过 150ms 才切骨架（快切无感）；无旧消息则立即显示骨架
+  const delayedHistoryLoading = useDelayedLoading(isDefaultMessagesRequesting);
 
   const currentModel = useMemo(
     () => models.find((m) => m.name === selectedModel),
@@ -349,6 +377,9 @@ const ChatPage: React.FC = () => {
       }
     } catch {
       // 会话列表拉取失败不阻断聊天
+    } finally {
+      // 首屏会话列表骨架屏收起（后续刷新不再触发首屏骨架）
+      setBootLoading(false);
     }
   }, [setConversations, setActiveConversationKey]);
 
@@ -386,11 +417,23 @@ const ChatPage: React.FC = () => {
     });
   }, []);
 
-  // 切换会话后滚到底部
-  useEffect(() => {
-    const timer = setTimeout(() => scrollPageToBottom(), 250);
-    return () => clearTimeout(timer);
-  }, [activeConversationKey, scrollPageToBottom]);
+  // 切换会话后：等历史消息渲染完成，在同一帧瞬间滚到底部（避免定时器与内容竞速）
+  const lastScrolledKeyRef = React.useRef('');
+  React.useLayoutEffect(() => {
+    if (bootLoading || isDefaultMessagesRequesting) return;
+    if (!activeConversationKey) return;
+    if (lastScrolledKeyRef.current === activeConversationKey) return;
+    lastScrolledKeyRef.current = activeConversationKey;
+    window.scrollTo({
+      top: document.documentElement.scrollHeight,
+      behavior: 'auto',
+    });
+  }, [
+    activeConversationKey,
+    isDefaultMessagesRequesting,
+    messages,
+    bootLoading,
+  ]);
 
   // 流式输出时跟随到底部（仅当用户未向上翻阅）
   useEffect(() => {
@@ -513,11 +556,11 @@ const ChatPage: React.FC = () => {
   };
 
   // ==================== 气泡角色配置 ====================
-  // 下载 Word 的文件名基准：当前会话标题（首条消息摘要），兜底「智能助手回答」
-  const answerFileBase = useMemo(() => {
-    const conv = conversations.find((c) => c.key === activeConversationKey);
-    return conv?.label?.trim() || '智能助手回答';
-  }, [conversations, activeConversationKey]);
+  // 下载 Word 的文件名基准：用 ref 读取，避免 roleConfig 随会话切换而重建
+  const answerFileBaseRef = React.useRef('智能助手回答');
+  answerFileBaseRef.current =
+    conversations.find((c) => c.key === activeConversationKey)?.label?.trim() ||
+    '智能助手回答';
 
   const roleConfig: BubbleListProps['role'] = useMemo(
     () => ({
@@ -530,7 +573,7 @@ const ChatPage: React.FC = () => {
             status={status}
             extraInfo={extraInfo as ChatMessage['extraInfo']}
             id={key as string}
-            fileName={answerFileBase}
+            fileName={answerFileBaseRef.current}
           />
         ),
         contentRender: (content: string, { status }) => {
@@ -555,7 +598,7 @@ const ChatPage: React.FC = () => {
         avatar: <Avatar icon={<UserOutlined />} />,
       },
     }),
-    [markdownClassName, answerFileBase],
+    [markdownClassName],
   );
 
   // ==================== 节点 ====================
@@ -607,48 +650,64 @@ const ChatPage: React.FC = () => {
       >
         新建对话
       </Button>
-      <Conversations
-        groupable
-        items={conversations as any}
-        className={styles.conversations}
-        activeKey={activeConversationKey}
-        onActiveChange={setActiveConversationKey}
-        styles={{ item: { padding: '0 8px' } }}
-        menu={(conversation) => ({
-          items: [
-            {
-              label: '重命名',
-              key: 'rename',
-              icon: <EditOutlined />,
-              onClick: () => {
-                setRenamingConv(conversation as ChatConversationItem);
-                setRenameValue(
-                  (conversation as ChatConversationItem).label ?? '',
-                );
+      {bootLoading ? (
+        <div className={styles.conversations}>
+          <ConversationSkeleton />
+        </div>
+      ) : (
+        <Conversations
+          groupable
+          items={conversations as any}
+          className={styles.conversations}
+          activeKey={activeConversationKey}
+          onActiveChange={setActiveConversationKey}
+          styles={{ item: { padding: '0 8px' } }}
+          menu={(conversation) => ({
+            items: [
+              {
+                label: '重命名',
+                key: 'rename',
+                icon: <EditOutlined />,
+                onClick: () => {
+                  setRenamingConv(conversation as ChatConversationItem);
+                  setRenameValue(
+                    (conversation as ChatConversationItem).label ?? '',
+                  );
+                },
               },
-            },
-            {
-              label: '删除',
-              key: 'delete',
-              icon: <DeleteOutlined />,
-              danger: true,
-              onClick: () =>
-                handleDeleteConversation(conversation as ChatConversationItem),
-            },
-          ],
-        })}
-      />
+              {
+                label: '删除',
+                key: 'delete',
+                icon: <DeleteOutlined />,
+                danger: true,
+                onClick: () =>
+                  handleDeleteConversation(
+                    conversation as ChatConversationItem,
+                  ),
+              },
+            ],
+          })}
+        />
+      )}
       <div className={styles.sideFooter}>
         <Avatar size={28} icon={<UserOutlined />} />
       </div>
     </div>
   );
 
+  // 骨架屏：首屏 / 无旧消息可展示时立即显示；有旧消息时超过 150ms 才切骨架（快切无感）
+  const showSkeleton =
+    bootLoading ||
+    (!hasDisplayMessages && isDefaultMessagesRequesting) ||
+    delayedHistoryLoading;
+
   const chatList = (
     <div className={styles.chatList}>
-      {messages?.length ? (
+      {showSkeleton ? (
+        <MessageSkeleton />
+      ) : hasDisplayMessages ? (
         <Bubble.List
-          items={messages.map((i) => ({
+          items={displayMessages.map((i) => ({
             ...(i.message as any),
             key: i.id,
             status: i.status,

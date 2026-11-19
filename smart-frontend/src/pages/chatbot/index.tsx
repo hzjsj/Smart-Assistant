@@ -24,8 +24,12 @@ import React, {
   useRef,
   useState,
 } from 'react';
-
+import {
+  ConversationSkeleton,
+  MessageSkeleton,
+} from '@/components/ChatSkeleton';
 import LottieThinkingIcon from '@/components/LottieThinkingIcon';
+import { useDelayedLoading } from '@/hooks/useDelayedLoading';
 
 import {
   deleteChatSession,
@@ -178,6 +182,9 @@ const ChatbotPage: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [enableThinking, setEnableThinking] = useState(false);
 
+  // 骨架屏：仅首屏会话列表加载时立即显示（历史消息切换用延迟骨架，避免瞬闪）
+  const [bootLoading, setBootLoading] = useState(true);
+
   const provider = useMemo(() => createChatProvider() as any, []);
   // 切换会话时由 useXChat 按 conversationKey 调用，拉取后端历史恢复气泡
   const loadDefaultMessages = useCallback(
@@ -203,16 +210,32 @@ const ChatbotPage: React.FC = () => {
     },
     [],
   );
-  const { onRequest, abort, isRequesting, parsedMessages } = useXChat<
-    any,
-    ParsedMessage
-  >({
+  const {
+    onRequest,
+    abort,
+    isRequesting,
+    parsedMessages,
+    isDefaultMessagesRequesting,
+  } = useXChat<any, ParsedMessage>({
     provider,
     conversationKey: activeKey,
     // <think> 标签不在此拆分，交给 XMarkdown 的 think 自定义组件渲染
     requestPlaceholder: { role: 'assistant', content: '' },
     defaultMessages: loadDefaultMessages as any,
   });
+
+  // 切换会话时保留上一次的消息内容做过渡，避免出现空白帧
+  const lastParsedRef = useRef(parsedMessages);
+  if (parsedMessages.length) lastParsedRef.current = parsedMessages;
+  const displayMessages =
+    parsedMessages.length > 0
+      ? parsedMessages
+      : isDefaultMessagesRequesting
+        ? lastParsedRef.current
+        : parsedMessages;
+  const hasDisplayMessages = displayMessages.length > 0;
+  // 有旧消息时，加载超过 150ms 才切骨架（快切无感）；无旧消息则立即显示骨架
+  const delayedHistoryLoading = useDelayedLoading(isDefaultMessagesRequesting);
 
   const currentModel = useMemo(
     () => models.find((m) => m.name === selectedModel),
@@ -231,6 +254,9 @@ const ChatbotPage: React.FC = () => {
       }
     } catch {
       // 会话列表拉取失败不阻断聊天
+    } finally {
+      // 首屏会话列表骨架屏收起（后续刷新不再触发首屏骨架）
+      setBootLoading(false);
     }
   }, []);
 
@@ -314,7 +340,7 @@ const ChatbotPage: React.FC = () => {
 
   const bubbleItems = useMemo<BubbleItemType[]>(
     () =>
-      parsedMessages.map((msg) => {
+      displayMessages.map((msg) => {
         const parsed = msg.message as ParsedMessage;
         const isAI = parsed.role === 'assistant';
 
@@ -328,10 +354,16 @@ const ChatbotPage: React.FC = () => {
 
         return item;
       }),
-    [parsedMessages],
+    [displayMessages],
   );
 
-  const hasMessages = parsedMessages.length > 0;
+  // 骨架屏：首屏 / 无旧消息可展示时立即显示；有旧消息时超过 150ms 才切骨架（快切无感）
+  const showSkeleton =
+    bootLoading ||
+    (!hasDisplayMessages && isDefaultMessagesRequesting) ||
+    delayedHistoryLoading;
+  // 只有加载完成且确实没有消息时才展示欢迎标题与居中输入区
+  const showEmpty = !showSkeleton && !hasDisplayMessages;
 
   // 模型选择器（按平台分组）
   const modelMenuItems: MenuProps['items'] = useMemo(() => {
@@ -385,25 +417,33 @@ const ChatbotPage: React.FC = () => {
         <XProvider>
           <div className={styles.layout}>
             <div className={styles.sidebar}>
-              <Conversations
-                items={conversations}
-                activeKey={activeKey}
-                onActiveChange={setActiveKey}
-                groupable
-                menu={(conversation) => ({
-                  items: [{ key: 'delete', label: '删除', danger: true }],
-                  onClick: ({ key }) => {
-                    if (key === 'delete') {
-                      handleDeleteConversation(conversation.key);
-                    }
-                  },
-                })}
-                creation={{ onClick: newChat, label: '新建对话' }}
-              />
+              {bootLoading ? (
+                <ConversationSkeleton />
+              ) : (
+                <Conversations
+                  items={conversations}
+                  activeKey={activeKey}
+                  onActiveChange={setActiveKey}
+                  groupable
+                  menu={(conversation) => ({
+                    items: [{ key: 'delete', label: '删除', danger: true }],
+                    onClick: ({ key }) => {
+                      if (key === 'delete') {
+                        handleDeleteConversation(conversation.key);
+                      }
+                    },
+                  })}
+                  creation={{ onClick: newChat, label: '新建对话' }}
+                />
+              )}
             </div>
 
             <div className={styles.main}>
-              {hasMessages && (
+              {showSkeleton ? (
+                <div className={styles.messages}>
+                  <MessageSkeleton />
+                </div>
+              ) : hasDisplayMessages ? (
                 <div className={styles.messages}>
                   <Bubble.List
                     items={bubbleItems}
@@ -412,12 +452,10 @@ const ChatbotPage: React.FC = () => {
                     styles={{ root: { maxWidth: 952, width: '100%' } }}
                   />
                 </div>
-              )}
+              ) : null}
 
-              <div
-                className={hasMessages ? styles.footer : styles.footerCenter}
-              >
-                {!hasMessages && (
+              <div className={showEmpty ? styles.footerCenter : styles.footer}>
+                {showEmpty && (
                   <div className={styles.welcomeTitle}>
                     <TypewriterTitle />
                   </div>
