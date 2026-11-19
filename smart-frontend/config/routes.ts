@@ -6,7 +6,7 @@ export default [
   },
   {
     path: '/copilot/:id',
-    layout: false,
+    layout: true,
     component: './copilot',
   },
   {
