@@ -7,3 +7,7 @@
 # IDE
 .idea/
 .vscode/
+
+# 运行脚本产物（PID / 日志）
+.run/
+logs/
