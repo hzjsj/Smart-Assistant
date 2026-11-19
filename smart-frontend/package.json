@@ -40,6 +40,7 @@
     "@ant-design/x-sdk": "^2.10.0",
     "@tanstack/react-query": "^5.101.2",
     "@types/react-katex": "^3.0.4",
+    "@wecom/jssdk": "^2.4.4",
     "antd": "^6.7.1",
     "antd-style": "^4.1.0",
     "china-division": "^2.7.0",

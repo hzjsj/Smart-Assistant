@@ -1,0 +1,140 @@
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 32px 24px;
+  overflow: auto;
+  background-image: url('https://mdn.alipayobjects.com/yuyan_qk0oxh/afts/img/V-_oS6r-i7wAAAAAAAAAAAAAFl94AQBr');
+  background-size: 100% 100%;
+}
+
+.loginCard {
+  width: 960px;
+  max-width: 100%;
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 18px 45px rgba(15, 35, 95, 0.12);
+}
+
+/* 企微配置缺失时隐藏扫码栏：卡片收窄，账密表单单栏居中 */
+.loginCardSingle {
+  width: 520px;
+}
+
+.loginCard :global(.ant-card-body) {
+  padding: 0;
+}
+
+.scanPane,
+.formPane {
+  min-height: 520px;
+  padding: 40px 20px;
+}
+
+.scanPane {
+  background: #fff;
+}
+
+.formPane {
+  background: linear-gradient(145deg, #f0f7ff 0%, #f8fbff 48%, #eef8f4 100%);
+}
+
+.scanBox,
+.accountPane {
+  box-sizing: border-box;
+  width: 440px;
+  max-width: 100%;
+  height: 416px;
+}
+
+.scanBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.formTitle {
+  margin-bottom: 8px !important;
+  color: rgba(0, 0, 0, 0.88) !important;
+  text-align: center;
+  padding-top: 6px;
+}
+
+.formSubTitle {
+  display: block;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
+.alert {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding: 24px 0;
+}
+
+.panel {
+  width: 100%;
+  min-height: 260px;
+}
+
+.panel :global(iframe) {
+  max-width: 100%;
+}
+
+.accountForm :global(.ant-pro-form-login-container) {
+  padding-block: 0;
+}
+
+.accountForm :global(.ant-pro-form-login-main) {
+  width: 100%;
+  min-width: 0;
+}
+
+.formExtra {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.browserTip {
+  display: block;
+  text-align: center;
+}
+
+@media (max-width: 767px) {
+  .loginCard {
+    width: 520px;
+  }
+
+  .scanPane,
+  .formPane {
+    min-height: auto;
+    padding: 32px 20px;
+  }
+}
+
+@media (max-width: 576px) {
+  .container {
+    align-items: flex-start;
+    padding: 24px 16px;
+  }
+
+  .scanBox,
+  .accountPane {
+    width: 100%;
+    height: auto;
+    min-height: 416px;
+  }
+
+  .panel {
+    min-height: 260px;
+  }
+}

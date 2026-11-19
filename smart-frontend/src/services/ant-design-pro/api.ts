@@ -44,6 +44,30 @@ export async function loginByTicket(body: { ticket: string }, options?: { [key: 
   });
 }
 
+/** 企业微信登录环境探测 GET /api/wecom/check-env */
+export async function wecomCheckEnv(options?: { [key: string]: any }) {
+  return request<{
+    isWxWork: boolean;
+    config: { CORPID?: string; AGENTID?: string; REDIRECT_URI?: string } | null;
+    info?: Record<string, any>;
+  }>('/api/wecom/check-env', {
+    method: 'GET',
+    ...(options || {}),
+  });
+}
+
+/** 企业微信登录 GET /api/wecom/login?code=xxx */
+export async function loginByWecom(
+  params: { code: string },
+  options?: { [key: string]: any },
+) {
+  return request<API.LoginResult & { message?: string }>('/api/wecom/login', {
+    method: 'GET',
+    params,
+    ...(options || {}),
+  });
+}
+
 /** 此处后端没有提供注释 GET /api/notices */
 export async function getNotices(options?: { [key: string]: any }) {
   return request<API.NoticeIconList>('/api/notices', {

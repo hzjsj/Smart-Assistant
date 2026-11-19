@@ -33,6 +33,7 @@ from dify.router import router as dify_router
 from bailian.router import router as bailian_router
 from langchain_agent.router import router as langchain_agent_router
 from openclaw.router import router as openclaw_router
+from wecom.router import router as wecom_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -73,3 +74,4 @@ app.include_router(dify_router)
 app.include_router(bailian_router)
 app.include_router(langchain_agent_router)
 app.include_router(openclaw_router)
+app.include_router(wecom_router)

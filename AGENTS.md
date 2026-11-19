@@ -39,7 +39,8 @@ npm run openapi    # regenerate src/services/fast-api-manage/* from backend open
 - Per-feature modules under their own dir (`users/`, `chat/`, `documents/`, `generate_test_paper/`, `mineru/`, `oss/`, `qieti/`), each following `models.py` / `crud.py` / `schemas.py` / `router.py` convention. Add new features by mirroring this layout.
 - `qieti/` is the reference for new-table conventions: inherits `TimestampMixin`, and its snapshot payload column uses `Text().with_variant(MEDIUMTEXT, "mysql")` (MySQL TEXT is 64KB — use the variant for any column that may hold dataURL images / large JSON).
 - Shared DB layer in `database.py` (`Base`, `TimestampMixin`, `get_db()` dependency); auth deps in `auth.py` (`get_current_user`, `require_admin`).
-- **Auth is cookie-based sessions, NOT JWT.** Cookie name `mock_token`; tokens `mock-<hex>`, stored in `user_sessions`, TTL 7 days. Passwords bcrypt-hashed. `auth.py` reads the cookie via `request.cookies.get(...)` (intentionally not a `Cookie()` param, to keep it out of OpenAPI).
+- **Auth is cookie-based sessions, NOT JWT.** Cookie name `sa_session_token`; tokens `sa-<hex>`, stored in `user_sessions`, TTL 7 days. Passwords bcrypt-hashed. `auth.py` reads the cookie via `request.cookies.get(...)` (intentionally not a `Cookie()` param, to keep it out of OpenAPI).
+- **WeCom login**: `wecom/` module — `GET /api/wecom/check-env`（UA 判企微内置浏览器 + 下发 CORPID/AGENTID/REDIRECT_URI）与 `GET /api/wecom/login?code=`（code 换 userid，按 `User.userid` 查找/自动注册后签发会话）。Config from `.env` `WECOM_CORPID/WECOM_CORPSECRET/WECOM_AGENTID/WECOM_REDIRECT_URI`（缺失时前端登录页降级为单栏账密）。登录页为「企微扫码 + 账密」双栏（`src/pages/user/login/`），企微面板用 `@wecom/jssdk`。
 - **LLM layer**: `chat/llm.py` wraps LangChain `ChatOpenAI` against OpenAI-compatible endpoints. Providers: DeepSeek, Alibaba Bailian (百炼), Volcengine Ark (豆包). `MODELS` registry; `DEFAULT_MODEL = "deepseek-v4-flash"`. Deep-thinking toggled via provider-specific `extra_body` (`enable_thinking` for deepseek/bailian; `{"thinking":{"type":"enabled"}}` for ark). `ReasoningChatOpenAI` subclass preserves `delta.reasoning_content` (works around langchain#29513). Per-model `context_tokens` overridable via env `MODEL_CONTEXT_<MODEL>_MAX`.
 
 ### Frontend
@@ -60,7 +61,7 @@ npm run openapi    # regenerate src/services/fast-api-manage/* from backend open
 
 ## Key REST surface (backend)
 
-- `/api/currentUser`, `/api/login/account|outLogin|captcha`, `/api/users` (admin CRUD) — `users/router.py`
+- `/api/currentUser`, `/api/login/account|outLogin|captcha|ticket`, `/api/wecom/{check-env,login}`, `/api/users` (admin CRUD) — `users/router.py`, `wecom/router.py`
 - `/api/chat/{models,sessions,messages,completions}` — `chat/router.py` (`completions` is streaming)
 - `/api/files/*` (upload/list/download/md/mineru) — `documents/router.py`
 - `/api/oss/convert-md-text-to-docx`, `/api/mineru/{extract,callback}` — `oss/`, `mineru/`
