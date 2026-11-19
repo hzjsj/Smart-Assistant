@@ -66,6 +66,7 @@ import {
 } from '@/services/chat';
 import { ossMdTextToDocxApiOssConvertMdTextToDocxPost } from '@/services/fast-api-manage/osSwenjianshangchuan';
 import { getDownloadUrl } from '@/services/fast-api-manage/wenjianguanli';
+import LottieThinkingIcon from './LottieThinkingIcon';
 
 const STREAMING_ACTIVE = { hasNextChunk: true, enableAnimation: true };
 const STREAMING_IDLE = { hasNextChunk: false, enableAnimation: true };
@@ -105,34 +106,6 @@ const SwitchTextStyle: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 400,
 };
-
-/** 深度思考图标（与 src/assets/icons/deep-think.svg 同源，currentColor 跟随开关文字颜色） */
-const DeepThinkIcon: React.FC<{ size?: number }> = ({ size = 14 }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 16 16"
-    width={size}
-    height={size}
-    aria-hidden="true"
-  >
-    <g transform="matrix(0.9728225469589233 0 0 0.9728225469589233 0.21741962432861328 0.21741962432861328)">
-      <path
-        fill="currentColor"
-        d="M8,6.769999980926514 C8.678836822509766,6.769999980926514 9.229999542236328,7.321163177490234 9.229999542236328,8 C9.229999542236328,8.678836822509766 8.678836822509766,9.229999542236328 8,9.229999542236328 C7.321163177490234,9.229999542236328 6.769999980926514,8.678836822509766 6.769999980926514,8 C6.769999980926514,7.321163177490234 7.321163177490234,6.769999980926514 8,6.769999980926514z"
-      />
-    </g>
-    <g
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M10.310430526733398,10.310430526733398 C7.105431079864502,13.51543140411377 3.4737708568573,15.077771186828613 2.197999954223633,13.802000045776367 C0.9222292304039001,12.526228904724121 2.485476493835449,8.89450740814209 5.690476417541504,5.689507484436035 C8.895476341247559,2.4845073223114014 12.526228904724121,0.9222292304039001 13.802000045776367,2.197999954223633 C15.077771186828613,3.4737708568573 13.51543140411377,7.105431079864502 10.310430526733398,10.310430526733398z" />
-      <path d="M10.730999946594238,5.269000053405762 C13.935999870300293,8.473999977111816 15.3100004196167,12.293999671936035 13.802000045776367,13.802000045776367 C12.293999671936035,15.3100004196167 8.475000381469727,13.935999870300293 5.269999980926514,10.730999946594238 C2.065000057220459,7.526000022888184 0.6899999976158142,3.7060000896453857 2.197999954223633,2.197999954223633 C3.7060000896453857,0.6899999976158142 7.526000022888184,2.063999891281128 10.730999946594238,5.269000053405762z" />
-    </g>
-  </svg>
-);
 
 /** 文档问答预设问题（欢迎页一键提问） */
 const DOC_PROMPTS = [
@@ -749,7 +722,7 @@ const Copilot = (props: CopilotProps) => {
                     </>
                   }
                   onChange={(checked: boolean) => setEnableThinking(checked)}
-                  icon={<DeepThinkIcon />}
+                  icon={<LottieThinkingIcon active={enableThinking} />}
                 />
               )}
             </Flex>
