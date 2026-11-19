@@ -37,6 +37,11 @@ export const useStyles = createStyles(({ css, token }) => ({
     > * {
       width: 100%;
     }
+
+    /* 去掉 Bubble.List 自带的 8px 内边距，使气泡与输入框左右边界一致 */
+    .ant-bubble-list-scroll-content {
+      padding-inline: 0;
+    }
   `,
 
   footer: css`

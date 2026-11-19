@@ -13,6 +13,8 @@ export const CHAT_API_URL = 'http://localhost:5000/api/chat/completions';
 export const createChatProvider = () =>
   new DeepSeekChatProvider({
     request: XRequest(CHAT_API_URL, {
+      // 跨域直连后端（8000 → 5000）必须显式携带 Cookie，否则会话鉴权 401
+      credentials: 'include',
       manual: true,
       headers: { 'Content-Type': 'application/json' },
       params: { stream: true },

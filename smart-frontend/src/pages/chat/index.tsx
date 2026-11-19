@@ -1,9 +1,11 @@
 import {
-  ApiOutlined,
+  AntDesignOutlined,
   DeleteOutlined,
+  DownloadOutlined,
   EditOutlined,
   PlusOutlined,
   SyncOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 import type { ActionsFeedbackProps, BubbleListProps } from '@ant-design/x';
 import {
@@ -13,14 +15,13 @@ import {
   Prompts,
   Sender,
   Think,
-  ThoughtChain,
   Welcome,
   XProvider,
 } from '@ant-design/x';
 import type { ComponentProps } from '@ant-design/x-markdown';
 import XMarkdown from '@ant-design/x-markdown';
 import type { DefaultMessageInfo } from '@ant-design/x-sdk';
-import { DeepSeekChatProvider, useXChat } from '@ant-design/x-sdk';
+import { useXChat } from '@ant-design/x-sdk';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Avatar,
@@ -30,20 +31,22 @@ import {
   Flex,
   type GetProp,
   Input,
-  message,
   type MenuProps,
   Modal,
+  message,
 } from 'antd';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import LottieThinkingIcon from '@/components/LottieThinkingIcon';
 import {
-  ChatConversationItem,
-  ChatModelItem,
+  type ChatConversationItem,
+  type ChatModelItem,
   deleteChatSession,
   listChatMessages,
   listChatModels,
   listChatSessions,
   renameChatSession,
 } from '@/services/chat';
+import { downloadAnswerAsDocx } from '@/utils/answerToDocx';
 import '@ant-design/x-markdown/themes/light.css';
 import '@ant-design/x-markdown/themes/dark.css';
 import { createChatProvider } from './service';
@@ -51,22 +54,29 @@ import { useStyles } from './style';
 import { useMarkdownTheme } from './utils';
 
 // ==================== 静态提示词 ====================
-const HOT_TOPICS: GetProp<typeof Prompts, 'items'> = [
+/** 空态快捷指令分组（标题 + 可点击卡片） */
+type PromptGroup = {
+  key: string;
+  label: string;
+  children: { key: string; label: string; description: string }[];
+};
+
+const HOT_TOPICS: PromptGroup[] = [
   {
     key: '1',
     label: '职场效率',
     children: [
       {
         key: '1-1',
-        icon: <PlusOutlined />,
         label: '写一份周报',
-        description: '帮我写一份本周工作周报，内容包括：完成 AI 对话功能开发、修复登录模块问题。',
+        description:
+          '帮我写一份本周工作周报，内容包括：完成 AI 对话功能开发、修复登录模块问题。',
       },
       {
         key: '1-2',
-        icon: <PlusOutlined />,
         label: '会议纪要',
-        description: '请根据以下要点帮我整理一份会议纪要：项目排期、风险项、责任人。',
+        description:
+          '请根据以下要点帮我整理一份会议纪要：项目排期、风险项、责任人。',
       },
     ],
   },
@@ -76,34 +86,26 @@ const HOT_TOPICS: GetProp<typeof Prompts, 'items'> = [
     children: [
       {
         key: '2-1',
-        icon: <PlusOutlined />,
         label: '解释代码',
-        description: '请用通俗的语言解释 React 的 useEffect 依赖数组是如何工作的。',
+        description:
+          '请用通俗的语言解释 React 的 useEffect 依赖数组是如何工作的。',
       },
       {
         key: '2-2',
-        icon: <PlusOutlined />,
         label: '头脑风暴',
-        description: '为一个面向中小企业的智能客服产品做头脑风暴，列出 5 个核心功能点。',
+        description:
+          '为一个面向中小企业的智能客服产品做头脑风暴，列出 5 个核心功能点。',
       },
     ],
   },
 ];
 
 const SENDER_PROMPTS: GetProp<typeof Prompts, 'items'> = [
-  { key: '1', description: '帮我写一份周报', icon: <SyncOutlined /> },
-  { key: '2', description: '用一句话介绍 DeepSeek 和通义千问的区别', icon: <SyncOutlined /> },
-  { key: '3', description: '给出 5 个提升代码质量的建议', icon: <SyncOutlined /> },
-  { key: '4', description: '把「今天天气真好」翻译成英文和日文', icon: <SyncOutlined /> },
+  { key: '1', description: '帮我写一份周报' },
+  { key: '2', description: '用一句话介绍 DeepSeek 和通义千问的区别' },
+  { key: '3', description: '给出 5 个提升代码质量的建议' },
+  { key: '4', description: '把「今天天气真好」翻译成英文和日文' },
 ];
-
-const THOUGHT_CHAIN_CONFIG: Record<string, { title: string; status: string }> = {
-  loading: { title: '正在调用模型', status: 'loading' },
-  updating: { title: '正在调用模型', status: 'loading' },
-  success: { title: '大模型执行完成', status: 'success' },
-  error: { title: '执行失败', status: 'error' },
-  abort: { title: '已终止', status: 'error' },
-};
 
 // ==================== 类型 ====================
 interface ChatMessage extends Record<string, unknown> {
@@ -118,6 +120,7 @@ interface ChatMessage extends Record<string, unknown> {
 const ChatContext = React.createContext<{
   onReload?: ReturnType<typeof useXChat>['onReload'];
   setMessage?: ReturnType<typeof useXChat<ChatMessage>>['setMessage'];
+  messageApi?: ReturnType<typeof message.useMessage>[0];
 }>({});
 
 // ==================== 子组件 ====================
@@ -134,20 +137,34 @@ const ThinkComponent = React.memo((props: ComponentProps) => {
   }, [props.streamStatus]);
 
   return (
-    <Think title={title} loading={loading} defaultExpanded={props.streamStatus !== 'done'}>
+    <Think
+      title={title}
+      loading={loading}
+      defaultExpanded={props.streamStatus !== 'done'}
+    >
       {props.children}
     </Think>
   );
 });
 
-/** AI 气泡操作栏：重新生成 / 复制 / 反馈 */
+/** AI 气泡操作栏：重新生成 / 复制 / 下载 Word / 反馈 */
 const Footer: React.FC<{
   id?: string | number;
   content: string;
   status?: string;
   extraInfo?: ChatMessage['extraInfo'];
-}> = ({ id, content, extraInfo, status }) => {
+  /** 下载 Word 的文件名基准（会话标题） */
+  fileName: string;
+}> = ({ id, content, extraInfo, status, fileName }) => {
   const context = React.useContext(ChatContext);
+  // 优先用页面内 messageApi（可消费主题上下文），兜底全局静态方法
+  const msg = context?.messageApi ?? message;
+  // 下载时剔除 <think> 思考块，只保留正文
+  const plainContent =
+    content
+      .split(/<\/think>/i)
+      .pop()
+      ?.trim() || content;
   const items = [
     {
       key: 'retry',
@@ -162,6 +179,28 @@ const Footer: React.FC<{
     {
       key: 'copy',
       actionRender: <Actions.Copy text={content} />,
+    },
+    {
+      key: 'download',
+      label: '下载 Word',
+      icon: <DownloadOutlined />,
+      onItemClick: async () => {
+        const msgKey = `docx-${id}`;
+        try {
+          msg.loading({
+            content: '正在转换 Word...',
+            key: msgKey,
+            duration: 0,
+          });
+          await downloadAnswerAsDocx(plainContent, fileName);
+          msg.success({ content: '已下载', key: msgKey });
+        } catch (error) {
+          msg.error({
+            content: (error as Error)?.message || '下载失败',
+            key: msgKey,
+          });
+        }
+      },
     },
     {
       key: 'feedback',
@@ -229,7 +268,9 @@ const ChatPage: React.FC = () => {
   const [enableThinking, setEnableThinking] = useState(false);
 
   // 会话列表自管（useState）：新增/删除/激活与 chatbot 页同构，行为可控
-  const [conversations, setConversations] = useState<ChatConversationItem[]>([]);
+  const [conversations, setConversations] = useState<ChatConversationItem[]>(
+    [],
+  );
   const [activeConversationKey, setActiveConversationKey] = useState('');
 
   const provider = useMemo(() => createChatProvider() as any, []);
@@ -259,31 +300,25 @@ const ChatPage: React.FC = () => {
     [],
   );
 
-  const {
-    onRequest,
-    abort,
-    isRequesting,
-    messages,
-    onReload,
-    setMessage,
-  } = useXChat<ChatMessage>({
-    provider,
-    conversationKey: activeConversationKey,
-    requestPlaceholder: { role: 'assistant', content: '' },
-    defaultMessages: loadDefaultMessages as any,
-    requestFallback: (_params, { error, messageInfo }) => {
-      if (error.name === 'AbortError') {
+  const { onRequest, abort, isRequesting, messages, onReload, setMessage } =
+    useXChat<ChatMessage>({
+      provider,
+      conversationKey: activeConversationKey,
+      requestPlaceholder: { role: 'assistant', content: '' },
+      defaultMessages: loadDefaultMessages as any,
+      requestFallback: (_params, { error, messageInfo }) => {
+        if (error.name === 'AbortError') {
+          return {
+            content: messageInfo?.message?.content || '请求已中止',
+            role: 'assistant',
+          };
+        }
         return {
-          content: messageInfo?.message?.content || '请求已中止',
+          content: '请求失败，请重试！',
           role: 'assistant',
         };
-      }
-      return {
-        content: '请求失败，请重试！',
-        role: 'assistant',
-      };
-    },
-  });
+      },
+    });
 
   const currentModel = useMemo(
     () => models.find((m) => m.name === selectedModel),
@@ -324,9 +359,7 @@ const ChatPage: React.FC = () => {
         const res = await listChatModels();
         if (res?.success) {
           setModels(res.data ?? []);
-          setSelectedModel(
-            (res as any).default ?? res.data?.[0]?.name ?? '',
-          );
+          setSelectedModel((res as any).default ?? res.data?.[0]?.name ?? '');
         }
       } catch {
         // 模型列表失败时选择器置空
@@ -343,6 +376,30 @@ const ChatPage: React.FC = () => {
     }
     wasRequesting.current = isRequesting;
   }, [isRequesting, refreshSessions]);
+
+  // ==================== 页面级滚动 ====================
+  // 消息区不再内部滚动，改用页面最右侧滚动条；新消息/切换会话时滚到底部
+  const scrollPageToBottom = useCallback((smooth = false) => {
+    window.scrollTo({
+      top: document.documentElement.scrollHeight,
+      behavior: smooth ? 'smooth' : 'auto',
+    });
+  }, []);
+
+  // 切换会话后滚到底部
+  useEffect(() => {
+    const timer = setTimeout(() => scrollPageToBottom(), 250);
+    return () => clearTimeout(timer);
+  }, [activeConversationKey, scrollPageToBottom]);
+
+  // 流式输出时跟随到底部（仅当用户未向上翻阅）
+  useEffect(() => {
+    if (!isRequesting || !messages.length) return;
+    const nearBottom =
+      window.innerHeight + window.scrollY >=
+      document.documentElement.scrollHeight - 200;
+    if (nearBottom) scrollPageToBottom();
+  }, [messages, isRequesting, scrollPageToBottom]);
 
   // 删除会话
   const { mutate: deleteRun } = useMutation({
@@ -366,14 +423,18 @@ const ChatPage: React.FC = () => {
     let chatId = activeConversationKey;
     if (!chatId) {
       chatId = newChatId();
-      setConversations([{ key: chatId, label: '新对话', group: '今天', isDraft: true }]);
+      setConversations([
+        { key: chatId, label: '新对话', group: '今天', isDraft: true },
+      ]);
       setActiveConversationKey(chatId);
     }
     // 新会话首条消息：把「新对话」标题改为消息摘要（后端建档也用该摘要）
     const currentConv = conversations.find((c) => c.key === chatId);
     if (currentConv && currentConv.label === '新对话') {
       setConversations((prev) =>
-        prev.map((c) => (c.key === chatId ? { ...c, label: val.slice(0, 20) } : c)),
+        prev.map((c) =>
+          c.key === chatId ? { ...c, label: val.slice(0, 20) } : c,
+        ),
       );
     }
     onRequest({
@@ -382,6 +443,8 @@ const ChatPage: React.FC = () => {
       model: selectedModel,
       enableThinking,
     });
+    // 页面级滚动：发送后滚到底部（等消息渲染后）
+    setTimeout(() => scrollPageToBottom(true), 60);
   };
 
   const handleNewConversation = () => {
@@ -398,7 +461,9 @@ const ChatPage: React.FC = () => {
   };
 
   // ── 重命名会话 ──────────────────────────────────────────────
-  const [renamingConv, setRenamingConv] = useState<ChatConversationItem | null>(null);
+  const [renamingConv, setRenamingConv] = useState<ChatConversationItem | null>(
+    null,
+  );
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
 
@@ -448,32 +513,24 @@ const ChatPage: React.FC = () => {
   };
 
   // ==================== 气泡角色配置 ====================
+  // 下载 Word 的文件名基准：当前会话标题（首条消息摘要），兜底「智能助手回答」
+  const answerFileBase = useMemo(() => {
+    const conv = conversations.find((c) => c.key === activeConversationKey);
+    return conv?.label?.trim() || '智能助手回答';
+  }, [conversations, activeConversationKey]);
+
   const roleConfig: BubbleListProps['role'] = useMemo(
     () => ({
       assistant: {
         placement: 'start',
-        avatar: (
-          <Avatar style={{ background: '#6f5bf5', fontSize: 16 }} shape="square">
-            AI
-          </Avatar>
-        ),
-        header: (_content, { status }) => {
-          const config = THOUGHT_CHAIN_CONFIG[status as string];
-          return config ? (
-            <ThoughtChain.Item
-              style={{ marginBottom: 8 }}
-              status={config.status as any}
-              variant="solid"
-              title={config.title}
-            />
-          ) : null;
-        },
+        avatar: <Avatar icon={<AntDesignOutlined />} />,
         footer: (content, { status, key, extraInfo }) => (
           <Footer
             content={content}
             status={status}
             extraInfo={extraInfo as ChatMessage['extraInfo']}
             id={key as string}
+            fileName={answerFileBase}
           />
         ),
         contentRender: (content: string, { status }) => {
@@ -495,30 +552,23 @@ const ChatPage: React.FC = () => {
       },
       user: {
         placement: 'end',
-        avatar: (
-          <Avatar style={{ background: '#87d068', fontSize: 16 }} shape="square">
-            我
-          </Avatar>
-        ),
+        avatar: <Avatar icon={<UserOutlined />} />,
       },
     }),
-    [markdownClassName],
+    [markdownClassName, answerFileBase],
   );
 
   // ==================== 节点 ====================
   // 重新生成：带上会话/模型参数与 regenerate 标记，后端会移除上一条 AI 回复后重新作答
   const handleReload = useCallback(
     (id: string | number) => {
-      onReload?.(
-        id,
-        {
-          userAction: 'retry',
-          chatId: activeConversationKey,
-          model: selectedModel,
-          enableThinking,
-          regenerate: true,
-        } as any,
-      );
+      onReload?.(id, {
+        userAction: 'retry',
+        chatId: activeConversationKey,
+        model: selectedModel,
+        enableThinking,
+        regenerate: true,
+      } as any);
     },
     [onReload, activeConversationKey, selectedModel, enableThinking],
   );
@@ -550,9 +600,10 @@ const ChatPage: React.FC = () => {
       <Button
         type="dashed"
         block
+        size="large"
         icon={<PlusOutlined />}
         onClick={handleNewConversation}
-        style={{ marginBottom: 8 }}
+        style={{ marginBottom: 12, borderRadius: 8 }}
       >
         新建对话
       </Button>
@@ -571,7 +622,9 @@ const ChatPage: React.FC = () => {
               icon: <EditOutlined />,
               onClick: () => {
                 setRenamingConv(conversation as ChatConversationItem);
-                setRenameValue((conversation as ChatConversationItem).label ?? '');
+                setRenameValue(
+                  (conversation as ChatConversationItem).label ?? '',
+                );
               },
             },
             {
@@ -579,15 +632,14 @@ const ChatPage: React.FC = () => {
               key: 'delete',
               icon: <DeleteOutlined />,
               danger: true,
-              onClick: () => handleDeleteConversation(conversation as ChatConversationItem),
+              onClick: () =>
+                handleDeleteConversation(conversation as ChatConversationItem),
             },
           ],
         })}
       />
       <div className={styles.sideFooter}>
-        <Avatar size={28} style={{ background: '#87d068' }}>
-          我
-        </Avatar>
+        <Avatar size={28} icon={<UserOutlined />} />
       </div>
     </div>
   );
@@ -603,52 +655,59 @@ const ChatPage: React.FC = () => {
             loading: i.status === 'loading',
             extraInfo: i.extraInfo,
           }))}
-          styles={{ root: { maxWidth: 940 } }}
+          styles={{ root: { maxWidth: 952, width: '100%' } }}
           role={roleConfig}
         />
       ) : (
-        <Flex vertical align="center" gap={16} className={styles.placeholder} style={{ maxWidth: 840 }}>
+        <div className={styles.welcomePanel}>
           <Welcome
-            style={{ width: '100%' }}
             variant="borderless"
-            icon="🤖"
             title="你好，我是智能助手"
             description="接入 DeepSeek / 通义千问 / 豆包，支持多轮对话与深度思考"
+            styles={{
+              root: { alignItems: 'center', textAlign: 'center' },
+            }}
           />
-          <Flex gap={16} justify="center" style={{ width: '100%' }}>
-            {HOT_TOPICS.map((topic) => (
-              <Prompts
-                key={topic.key}
-                items={[topic]}
-                styles={{
-                  list: { height: '100%' },
-                  item: {
-                    flex: 1,
-                    backgroundImage: 'linear-gradient(123deg, #e5f4ff 0%, #efe7ff 100%)',
-                    borderRadius: 12,
-                    border: 'none',
-                  },
-                  subItem: { padding: 0, background: 'transparent' },
-                }}
-                onItemClick={(info) => onSubmit(info.data.description as string)}
-                className={styles.senderPrompt}
-              />
+          <div className={styles.topicGroups}>
+            {HOT_TOPICS.map((group) => (
+              <section key={group.key}>
+                <div className={styles.topicGroupLabel}>{group.label}</div>
+                <div className={styles.topicCards}>
+                  {group.children.map((item) => (
+                    <button
+                      key={item.key}
+                      type="button"
+                      className={styles.topicCard}
+                      onClick={() => onSubmit(item.description)}
+                    >
+                      <span className={styles.topicCardTitle}>
+                        {item.label}
+                      </span>
+                      <span className={styles.topicCardDesc}>
+                        {item.description}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
             ))}
-          </Flex>
-        </Flex>
+          </div>
+        </div>
       )}
     </div>
   );
 
   const chatSender = (
-    <Flex vertical gap={12} align="center" style={{ margin: 8 }}>
+    <Flex vertical gap={12} align="center" className={styles.senderBar}>
       {!isRequesting && (
-        <Prompts
-          items={SENDER_PROMPTS}
-          onItemClick={(info) => onSubmit(info.data.description as string)}
-          styles={{ item: { padding: '6px 12px' } }}
-          className={styles.senderPrompt}
-        />
+        <div className={styles.senderPromptScroll}>
+          <Prompts
+            items={SENDER_PROMPTS}
+            onItemClick={(info) => onSubmit(info.data.description as string)}
+            styles={{ item: { padding: '6px 12px' } }}
+            className={styles.senderPrompt}
+          />
+        </div>
       )}
       <Sender
         value={inputValue}
@@ -678,7 +737,7 @@ const ChatPage: React.FC = () => {
                   items: modelMenuItems,
                 }}
               >
-                <Sender.Switch value={false} icon={<ApiOutlined />}>
+                <Sender.Switch value={false} icon={<AntDesignOutlined />}>
                   {modelAbbr(selectedModel) || '选择模型'}
                 </Sender.Switch>
               </Dropdown>
@@ -697,6 +756,7 @@ const ChatPage: React.FC = () => {
                     </>
                   }
                   onChange={(checked: boolean) => setEnableThinking(checked)}
+                  icon={<LottieThinkingIcon active={enableThinking} />}
                 />
               )}
             </Flex>
@@ -712,7 +772,9 @@ const ChatPage: React.FC = () => {
 
   return (
     <XProvider>
-      <ChatContext.Provider value={{ onReload: handleReload, setMessage }}>
+      <ChatContext.Provider
+        value={{ onReload: handleReload, setMessage, messageApi }}
+      >
         {contextHolder}
         <div className={styles.layout}>
           {chatSide}

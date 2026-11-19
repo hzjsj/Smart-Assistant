@@ -1,4 +1,4 @@
-import { UserOutlined } from '@ant-design/icons';
+import { AntDesignOutlined, UserOutlined } from '@ant-design/icons';
 import { PageContainer } from '@ant-design/pro-components';
 import { Bubble, Conversations, Sender, Think, XProvider } from '@ant-design/x';
 import type {
@@ -8,7 +8,15 @@ import type {
 import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
 import Latex from '@ant-design/x-markdown/plugins/Latex';
 import { useXChat } from '@ant-design/x-sdk';
-import { Avatar, Card, Select, Space, Switch, Tooltip, message } from 'antd';
+import {
+  Avatar,
+  Card,
+  Divider,
+  Dropdown,
+  Flex,
+  type MenuProps,
+  message,
+} from 'antd';
 import React, {
   useCallback,
   useEffect,
@@ -17,18 +25,15 @@ import React, {
   useState,
 } from 'react';
 
+import LottieThinkingIcon from '@/components/LottieThinkingIcon';
+
 import {
-  createChatSession,
   deleteChatSession,
   listChatMessages,
   listChatModels,
   listChatSessions,
 } from './api';
-import type {
-  ChatModelItem,
-  ConversationItem,
-  ParsedMessage,
-} from './data';
+import type { ChatModelItem, ConversationItem, ParsedMessage } from './data';
 import { createChatProvider } from './service';
 import { useStyles } from './style';
 
@@ -74,7 +79,11 @@ const ThinkComponent = React.memo((props: ComponentProps) => {
   }, [props.streamStatus]);
 
   return (
-    <Think title={title} loading={loading} defaultExpanded={props.streamStatus !== 'done'}>
+    <Think
+      title={title}
+      loading={loading}
+      defaultExpanded={props.streamStatus !== 'done'}
+    >
       {props.children}
     </Think>
   );
@@ -91,19 +100,7 @@ const roleConfig: BubbleListProps['role'] = {
   },
   ai: {
     placement: 'start',
-    avatar: (
-      <Avatar
-        style={{
-          background: 'transparent',
-          fontSize: 22,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        🤖
-      </Avatar>
-    ),
+    avatar: <Avatar icon={<AntDesignOutlined />} />,
     contentRender: (
       content: string,
       info: { status?: string; loading?: boolean },
@@ -128,6 +125,29 @@ const roleConfig: BubbleListProps['role'] = {
 
 const formatContext = (tokens: number) =>
   tokens >= 1024 ? `${Math.round(tokens / 1024)}K` : `${tokens}`;
+
+/** 模型缩写（与 /chat、/copilot 保持一致） */
+const MODEL_ABBR: Record<string, string> = {
+  'deepseek-v4-flash': 'DS-Flash',
+  'deepseek-v4-pro': 'DS-Pro',
+  'deepseek-v4-flash-vision-exp': 'DS-Vision',
+  'qwen3.7-plus': 'Qwen-Plus',
+  'qwen3.8-flash': 'Qwen-Flash',
+  'qwen3.8-max': 'Qwen-Max',
+  'doubao-seed-2-1-pro-260628': 'Doubao-Pro',
+  'doubao-seed-2-1-turbo-260628': 'Doubao-Turbo',
+  'doubao-seed-evolving': 'Doubao-Evo',
+};
+
+const modelAbbr = (name: string) => MODEL_ABBR[name] ?? name;
+
+/** 深度思考开关文字样式（开/关 居中窄列） */
+const SwitchTextStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  width: 24,
+  justifyContent: 'center',
+  alignItems: 'center',
+};
 
 /** 会话ID 用 UUID（后端 chat_id 要求 8-64 字符） */
 const newChatId = () =>
@@ -224,7 +244,9 @@ const ChatbotPage: React.FC = () => {
           const def = (res.data ?? []).find(
             (m) => m.name === (res as any).default,
           );
-          setSelectedModel((res as any).default ?? def?.name ?? (res.data?.[0]?.name ?? ''));
+          setSelectedModel(
+            (res as any).default ?? def?.name ?? res.data?.[0]?.name ?? '',
+          );
         }
       } catch {
         // 模型列表失败时选择器置空
@@ -312,7 +334,7 @@ const ChatbotPage: React.FC = () => {
   const hasMessages = parsedMessages.length > 0;
 
   // 模型选择器（按平台分组）
-  const modelOptions = useMemo(() => {
+  const modelMenuItems: MenuProps['items'] = useMemo(() => {
     const groups = new Map<string, ChatModelItem[]>();
     models.forEach((m) => {
       const list = groups.get(m.providerLabel) ?? [];
@@ -320,11 +342,12 @@ const ChatbotPage: React.FC = () => {
       groups.set(m.providerLabel, list);
     });
     return [...groups.entries()].map(([label, list]) => ({
+      key: label,
       label,
-      title: label,
-      options: list.map((m) => ({
-        value: m.name,
-        label: `${m.name}（${formatContext(m.contextTokens)}）`,
+      type: 'group' as const,
+      children: list.map((m) => ({
+        key: m.name,
+        label: `${modelAbbr(m.name)} · ${m.name}（${formatContext(m.contextTokens)}）`,
       })),
     }));
   }, [models]);
@@ -386,7 +409,7 @@ const ChatbotPage: React.FC = () => {
                     items={bubbleItems}
                     role={roleConfig}
                     autoScroll
-                    styles={{ root: { maxWidth: 940 } }}
+                    styles={{ root: { maxWidth: 952, width: '100%' } }}
                   />
                 </div>
               )}
@@ -406,37 +429,64 @@ const ChatbotPage: React.FC = () => {
                   onSubmit={sendMessage}
                   onCancel={abort}
                   placeholder="输入消息，按 Enter 发送..."
-                  autoSize={{ minRows: 4, maxRows: 8 }}
-                  style={{ maxWidth: 940, width: '100%' }}
-                  styles={{ input: { paddingBlock: 0 } }}
-                  prefix={
-                    <Space.Compact>
-                      <Select
-                        value={selectedModel || undefined}
-                        onChange={(v) => {
-                          setSelectedModel(v);
-                          const meta = models.find((m) => m.name === v);
-                          if (!meta?.supportsThinking) setEnableThinking(false);
-                        }}
-                        options={modelOptions}
-                        loading={models.length === 0}
-                        style={{ minWidth: 240 }}
-                        size="middle"
-                        variant="borderless"
-                        placeholder="选择模型"
-                      />
-                      {currentModel?.supportsThinking && (
-                        <Tooltip title="深度思考">
-                          <Switch
-                            checked={enableThinking}
-                            onChange={setEnableThinking}
-                            checkedChildren="思考"
-                            unCheckedChildren="思考"
+                  autoSize={{ minRows: 3, maxRows: 6 }}
+                  style={{ maxWidth: 952, width: '100%' }}
+                  suffix={false}
+                  footer={(actionNode) => (
+                    <Flex justify="space-between" align="center">
+                      <Flex gap="small" align="center">
+                        {/* 模型选择：Dropdown + 缩写按钮 */}
+                        <Dropdown
+                          menu={{
+                            selectedKeys: [selectedModel],
+                            onClick: ({ key }) => {
+                              setSelectedModel(key);
+                              const meta = models.find((m) => m.name === key);
+                              if (!meta?.supportsThinking) {
+                                setEnableThinking(false);
+                              }
+                            },
+                            items: modelMenuItems,
+                          }}
+                        >
+                          <Sender.Switch
+                            value={false}
+                            icon={<AntDesignOutlined />}
+                          >
+                            {modelAbbr(selectedModel) || '选择模型'}
+                          </Sender.Switch>
+                        </Dropdown>
+                        {/* 深度思考开关（仅思考模型显示） */}
+                        {currentModel?.supportsThinking && (
+                          <Sender.Switch
+                            value={enableThinking}
+                            checkedChildren={
+                              <>
+                                深度思考:
+                                <span style={SwitchTextStyle}>开</span>
+                              </>
+                            }
+                            unCheckedChildren={
+                              <>
+                                深度思考:
+                                <span style={SwitchTextStyle}>关</span>
+                              </>
+                            }
+                            onChange={(checked: boolean) =>
+                              setEnableThinking(checked)
+                            }
+                            icon={
+                              <LottieThinkingIcon active={enableThinking} />
+                            }
                           />
-                        </Tooltip>
-                      )}
-                    </Space.Compact>
-                  }
+                        )}
+                      </Flex>
+                      <Flex align="center">
+                        <Divider orientation="vertical" />
+                        {actionNode}
+                      </Flex>
+                    </Flex>
+                  )}
                 />
               </div>
             </div>

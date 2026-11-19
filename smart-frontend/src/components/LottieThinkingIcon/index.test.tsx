@@ -5,7 +5,7 @@ const lottieMock = vi.hoisted(() => ({ loadAnimation: vi.fn() }));
 
 vi.mock('lottie-web', () => ({ default: lottieMock }));
 
-import LottieThinkingIcon from './LottieThinkingIcon';
+import LottieThinkingIcon from './index';
 
 type FakeAnimation = {
   isLoaded: boolean;

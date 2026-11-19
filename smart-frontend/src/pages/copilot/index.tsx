@@ -56,6 +56,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import LottieThinkingIcon from '@/components/LottieThinkingIcon';
 import { getChatErrorMessage, getResponseError } from '@/pages/hermes/service';
 import {
   type ChatModelItem,
@@ -64,9 +65,8 @@ import {
   listChatModels,
   listChatSessions,
 } from '@/services/chat';
-import { ossMdTextToDocxApiOssConvertMdTextToDocxPost } from '@/services/fast-api-manage/osSwenjianshangchuan';
 import { getDownloadUrl } from '@/services/fast-api-manage/wenjianguanli';
-import LottieThinkingIcon from './LottieThinkingIcon';
+import { downloadAnswerAsDocx } from '@/utils/answerToDocx';
 
 const STREAMING_ACTIVE = { hasNextChunk: true, enableAnimation: true };
 const STREAMING_IDLE = { hasNextChunk: false, enableAnimation: true };
@@ -214,30 +214,6 @@ const SSE_API_BASE =
     : '';
 const CHAT_COMPLETIONS_URL = `${SSE_API_BASE}/api/chat/completions`;
 
-/** 消息回答转 Word 下载（失败抛错由调用方提示） */
-const downloadMessageAsDocx = async (content: string, docName: string) => {
-  const baseName = docName.replace(/\.(md|markdown)$/i, '') || '文档';
-  const result = await ossMdTextToDocxApiOssConvertMdTextToDocxPost({
-    md_content: content,
-    filename: baseName,
-  });
-  if (!result?.url) throw new Error('转换服务未返回下载地址');
-  const response = await fetch(result.url);
-  if (!response.ok) throw new Error('下载失败');
-  const fileBlob = await response.blob();
-  const blob = new Blob([fileBlob], {
-    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  });
-  const blobUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = blobUrl;
-  link.download = `${baseName}.docx`;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(blobUrl);
-};
-
 const Footer: React.FC<{
   id?: string;
   content: string;
@@ -261,7 +237,7 @@ const Footer: React.FC<{
         const key = `docx-${id}`;
         try {
           message.loading({ content: '正在转换 Word...', key, duration: 0 });
-          await downloadMessageAsDocx(resultContent, docName);
+          await downloadAnswerAsDocx(resultContent, docName);
           message.success({ content: '已下载', key });
         } catch (error) {
           message.error({
@@ -514,11 +490,7 @@ const Copilot = (props: CopilotProps) => {
           styles={{ container: { padding: 0, maxHeight: 600 } }}
           content={
             <Conversations
-              items={conversations?.map((i) =>
-                i.key === activeConversationKey
-                  ? { ...i, label: `[current] ${i.label}` }
-                  : i,
-              )}
+              items={(conversations ?? []) as any}
               activeKey={activeConversationKey}
               groupable
               onActiveChange={setActiveConversationKey}
