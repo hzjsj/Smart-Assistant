@@ -22,16 +22,7 @@ import type {
 } from '@ant-design/x/es/bubble/interface';
 import type { SenderRef } from '@ant-design/x/es/sender/interface';
 import { useXChat, useXConversations } from '@ant-design/x-sdk';
-import {
-  Badge,
-  Button,
-  Card,
-  Dropdown,
-  Input,
-  Modal,
-  message,
-  Spin,
-} from 'antd';
+import { Badge, Button, Card, Dropdown, Input, Modal, message } from 'antd';
 import React, {
   useCallback,
   useEffect,
@@ -39,6 +30,10 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import {
+  ConversationSkeleton,
+  MessageSkeleton,
+} from '@/components/ChatSkeleton';
 import { ossMdTextToDocxApiOssConvertMdTextToDocxPost } from '@/services/fast-api-manage/osSwenjianshangchuan';
 import { genUuid } from '@/utils/uuid';
 import AssistantPrompts from './assistant/AssistantPrompts';
@@ -375,7 +370,7 @@ const HermesPage: React.FC = () => {
   const [drafts, setDrafts] = useState<ConversationDrafts>(
     readDraftsFromStorage,
   );
-  // 会话持久化加载态：列表未就绪前主区显示 Spin，避免闪现内存空会话。
+  // 会话持久化加载态：列表未就绪前侧栏显示骨架，避免闪现内存空会话。
   const [conversationsLoading, setConversationsLoading] = useState(true);
   // 后端仍在生成的会话（页面刷新/断线后转移后台）：3 秒轮询恢复进度。
   const [backendStreamingId, setBackendStreamingId] = useState<string | null>(
@@ -1065,27 +1060,25 @@ const HermesPage: React.FC = () => {
   // 欢迎区只参与布局，不作为 AI 消息传入 Bubble.List 或模型请求。
   const hasChatContent = hasMessages || Boolean(assistant.welcomeContent);
 
-  useEffect(() => {
+  // 气泡列居中：首帧同步测量滚动条占位宽度（避免挂载后第二帧横移）
+  React.useLayoutEffect(() => {
     if (!hasMessages || view !== 'chat') return;
     let observer: ResizeObserver | undefined;
-    // Bubble.List publishes its scroll element after its own first render.
-    const frame = requestAnimationFrame(() => {
-      const list = bubbleListRef.current;
-      const scroll = list?.scrollBoxNativeElement;
-      if (!list || !scroll) return;
-      // Center columns in main, including the reserved scrollbar gutter.
-      const syncWidth = () => {
-        list.nativeElement.style.setProperty(
-          '--hermes-scrollbar-width',
-          `${scroll.offsetWidth - scroll.clientWidth}px`,
-        );
-      };
-      syncWidth();
-      observer = new ResizeObserver(syncWidth);
-      observer.observe(scroll);
-    });
+    const list = bubbleListRef.current;
+    const scroll = list?.scrollBoxNativeElement;
+    if (!list || !scroll) return;
+    // Center columns in main, including the reserved scrollbar gutter.
+    const syncWidth = () => {
+      list.nativeElement.style.setProperty(
+        '--hermes-scrollbar-width',
+        `${scroll.offsetWidth - scroll.clientWidth}px`,
+      );
+    };
+    // 首帧绘制前同步写入，避免气泡挂载后第二帧横向位移
+    syncWidth();
+    observer = new ResizeObserver(syncWidth);
+    observer.observe(scroll);
     return () => {
-      cancelAnimationFrame(frame);
       observer?.disconnect();
     };
   }, [hasMessages, view]);
@@ -1249,7 +1242,9 @@ const HermesPage: React.FC = () => {
   return (
     <XProvider theme={chatTheme}>
       <HermesLayout
-        conversations={conversationList}
+        conversations={
+          conversationsLoading ? <ConversationSkeleton /> : conversationList
+        }
         workbenchOpen={questionWorkspace.state.open}
         onCloseWorkspace={questionWorkspace.close}
       >
@@ -1342,11 +1337,8 @@ const HermesPage: React.FC = () => {
                 <div className={styles.layout}>
                   <div className={styles.main}>
                     {historyLoading && (
-                      <div
-                        className={styles.welcomeTitle}
-                        style={{ display: 'flex', justifyContent: 'center' }}
-                      >
-                        <Spin />
+                      <div className={styles.messages}>
+                        <MessageSkeleton />
                       </div>
                     )}
                     {history.status === 'error' && (
@@ -1401,14 +1393,8 @@ const HermesPage: React.FC = () => {
                       </div>
                     )}
 
-                    <div
-                      className={
-                        hasChatContent || !historyReady
-                          ? styles.footer
-                          : styles.footerCenter
-                      }
-                    >
-                      {historyReady && !hasChatContent && (
+                    {historyReady && !hasChatContent && (
+                      <div className={styles.welcomeArea}>
                         <div className={styles.welcomeTitle}>
                           {/* key 随模型变化：切换时欢迎语从头重打 */}
                           <TypewriterTitle
@@ -1416,14 +1402,17 @@ const HermesPage: React.FC = () => {
                             text={WELCOME_TEXTS[chatModel]}
                           />
                         </div>
-                      )}
-                      {/* 快捷助手指令行：点击把插槽模板填入输入框（不发送）。 */}
-                      {assistant.activePreset && !attachmentsOpen && (
-                        <AssistantPrompts
-                          preset={assistant.activePreset}
-                          onSelect={assistant.selectPrompt}
-                        />
-                      )}
+                        {/* 快捷助手指令行：点击把插槽模板填入输入框（不发送）。 */}
+                        {assistant.activePreset && !attachmentsOpen && (
+                          <AssistantPrompts
+                            preset={assistant.activePreset}
+                            onSelect={assistant.selectPrompt}
+                          />
+                        )}
+                      </div>
+                    )}
+
+                    <div className={styles.footer}>
                       <Sender
                         ref={senderRef}
                         disabled={!historyReady}

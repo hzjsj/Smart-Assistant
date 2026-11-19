@@ -41,6 +41,12 @@ const HermesLayout = ({
   const [peekClosing, setPeekClosing] = useState(false);
   const peekCloseTimer = useRef<number | undefined>(undefined);
   const peekActive = peeking && collapsed && !isMobile;
+  // 首帧后再启用布局过渡，避免 ProLayout 初始宽度修正被动画化
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setReady(true));
+    return () => cancelAnimationFrame(frame);
+  }, []);
   /** 切换侧栏显隐；传 open 时显式设定目标态（移动端选会话后收起抽屉用）。 */
   const toggleNavigation = (open?: boolean) => {
     setPeeking(false);
@@ -185,6 +191,7 @@ const HermesLayout = ({
   return (
     <div
       className={styles.workspace}
+      data-ready={ready ? 'true' : undefined}
       data-nav-hidden={collapsed}
       data-nav-peek={peekActive ? 'true' : undefined}
       data-nav-closing={peekClosing ? 'true' : undefined}

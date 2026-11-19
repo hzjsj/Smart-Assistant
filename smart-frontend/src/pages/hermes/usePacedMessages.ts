@@ -70,8 +70,10 @@ export function usePacedMessages(
       const prior = playback.current.get(info.id);
       const interrupted = info.status === 'abort' || info.status === 'error';
       const restarted = active && prior?.finished;
+      // 历史恢复的流式消息已落库完整内容：直接展示，避免刷新后从空串重放打字机
+      const restored = Boolean(info.message.restoredStreaming);
       const realtime =
-        document.hidden || (!restarted && Boolean(prior?.realtime));
+        document.hidden || restored || (!restarted && Boolean(prior?.realtime));
       playback.current.set(info.id, {
         target,
         shown:

@@ -170,11 +170,17 @@ export const messageRecordToHermesMessage = (
 export const messageRecordToMessageInfo = (
   record: MessageRecord,
   streaming = false,
-): MessageInfo<HermesMessage> => ({
-  id: `restore_${record.id}`,
-  status: streaming && record.role === 'assistant' ? 'updating' : 'local',
-  message: messageRecordToHermesMessage(record),
-});
+): MessageInfo<HermesMessage> => {
+  const message = messageRecordToHermesMessage(record);
+  return {
+    id: `restore_${record.id}`,
+    status: streaming && record.role === 'assistant' ? 'updating' : 'local',
+    message:
+      streaming && record.role === 'assistant'
+        ? { ...message, restoredStreaming: true }
+        : message,
+  };
+};
 
 /** 从 localStorage 读输入草稿（按会话 key 隔离；豆包草稿库的单机简化版）。 */
 export const readDraftsFromStorage = (): Record<string, string> => {

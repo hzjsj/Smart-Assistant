@@ -37,6 +37,15 @@ export const useStyles = createStyles(({ css, token, isDarkMode }) => ({
       background: #fff;
     }
 
+    /* 首帧不播放侧栏宽度/位置过渡，避免初始布局修正被动画化 */
+    &:not([data-ready='true']) {
+      .ant-pro-layout .ant-layout > div:has(+ .ant-pro-sider-fixed),
+      .ant-pro-layout .ant-layout > .ant-pro-sider-fixed,
+      .ant-pro-layout .ant-pro-layout-container {
+        transition: none !important;
+      }
+    }
+
     @media (min-width: 768px) {
       /* ProLayout emits an anonymous width placeholder directly before its fixed sider. */
       .ant-pro-layout .ant-layout > div:has(+ .ant-pro-sider-fixed),
@@ -484,6 +493,21 @@ export const useStyles = createStyles(({ css, token, isDarkMode }) => ({
     flex-direction: column;
     align-items: center;
 
+    @media (prefers-reduced-motion: no-preference) {
+      animation: hermes-messages-in 180ms ease-out;
+    }
+
+    @keyframes hermes-messages-in {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
     > * {
       width: 100%;
     }
@@ -499,6 +523,21 @@ export const useStyles = createStyles(({ css, token, isDarkMode }) => ({
     overflow-y: auto;
     width: 100%;
     padding: 16px max(var(--hermes-chat-column-padding), calc((100% - var(--hermes-chat-column)) / 2)) 24px;
+
+    @media (prefers-reduced-motion: no-preference) {
+      animation: hermes-welcome-message-in 180ms ease-out;
+    }
+
+    @keyframes hermes-welcome-message-in {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
   `,
 
   messageList: css`
@@ -787,14 +826,32 @@ export const useStyles = createStyles(({ css, token, isDarkMode }) => ({
     gap: 8px;
   `,
 
-  footerCenter: css`
+  /* 空态欢迎区：占消息区并垂直居中（输入框始终固定在底部） */
+  welcomeArea: css`
     flex: 1;
+    min-height: 0;
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 24px 16px;
     gap: 32px;
+
+    @media (prefers-reduced-motion: no-preference) {
+      animation: hermes-welcome-in 180ms ease-out;
+    }
+
+    @keyframes hermes-welcome-in {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
   `,
 
   welcomeTitle: css`

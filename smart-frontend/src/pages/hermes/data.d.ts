@@ -67,6 +67,8 @@ export interface HermesMessage {
   questionBanks?: QuestionBankCardData[];
   questionBankPending?: boolean;
   questionBankErrors?: string[];
+  /** 历史恢复的流式消息：直接展示已落库内容，不再从空串重放打字机 */
+  restoredStreaming?: boolean;
 }
 
 export interface ConversationItem {
