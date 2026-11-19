@@ -1,5 +1,5 @@
 import {
-  ApiOutlined,
+  AntDesignOutlined,
   CloseOutlined,
   CommentOutlined,
   DownloadOutlined,
@@ -33,9 +33,12 @@ import {
   type XModelResponse,
   XRequest,
 } from '@ant-design/x-sdk';
+import { useParams } from '@umijs/max';
+import type { MenuProps } from 'antd';
 import {
   Alert,
   Button,
+  Divider,
   Dropdown,
   Flex,
   message,
@@ -45,20 +48,24 @@ import {
   Splitter,
   Tag,
 } from 'antd';
-import type { MenuProps } from 'antd';
 import { createStyles } from 'antd-style';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from '@umijs/max';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { getChatErrorMessage, getResponseError } from '@/pages/hermes/service';
 import {
+  type ChatModelItem,
   deleteChatSession,
   listChatMessages,
   listChatModels,
   listChatSessions,
-  type ChatModelItem,
 } from '@/services/chat';
 import { ossMdTextToDocxApiOssConvertMdTextToDocxPost } from '@/services/fast-api-manage/osSwenjianshangchuan';
 import { getDownloadUrl } from '@/services/fast-api-manage/wenjianguanli';
-import { getChatErrorMessage, getResponseError } from '@/pages/hermes/service';
 
 const STREAMING_ACTIVE = { hasNextChunk: true, enableAnimation: true };
 const STREAMING_IDLE = { hasNextChunk: false, enableAnimation: true };
@@ -98,6 +105,34 @@ const SwitchTextStyle: React.CSSProperties = {
   fontSize: 11,
   fontWeight: 400,
 };
+
+/** 深度思考图标（与 src/assets/icons/deep-think.svg 同源，currentColor 跟随开关文字颜色） */
+const DeepThinkIcon: React.FC<{ size?: number }> = ({ size = 14 }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 16 16"
+    width={size}
+    height={size}
+    aria-hidden="true"
+  >
+    <g transform="matrix(0.9728225469589233 0 0 0.9728225469589233 0.21741962432861328 0.21741962432861328)">
+      <path
+        fill="currentColor"
+        d="M8,6.769999980926514 C8.678836822509766,6.769999980926514 9.229999542236328,7.321163177490234 9.229999542236328,8 C9.229999542236328,8.678836822509766 8.678836822509766,9.229999542236328 8,9.229999542236328 C7.321163177490234,9.229999542236328 6.769999980926514,8.678836822509766 6.769999980926514,8 C6.769999980926514,7.321163177490234 7.321163177490234,6.769999980926514 8,6.769999980926514z"
+      />
+    </g>
+    <g
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M10.310430526733398,10.310430526733398 C7.105431079864502,13.51543140411377 3.4737708568573,15.077771186828613 2.197999954223633,13.802000045776367 C0.9222292304039001,12.526228904724121 2.485476493835449,8.89450740814209 5.690476417541504,5.689507484436035 C8.895476341247559,2.4845073223114014 12.526228904724121,0.9222292304039001 13.802000045776367,2.197999954223633 C15.077771186828613,3.4737708568573 13.51543140411377,7.105431079864502 10.310430526733398,10.310430526733398z" />
+      <path d="M10.730999946594238,5.269000053405762 C13.935999870300293,8.473999977111816 15.3100004196167,12.293999671936035 13.802000045776367,13.802000045776367 C12.293999671936035,15.3100004196167 8.475000381469727,13.935999870300293 5.269999980926514,10.730999946594238 C2.065000057220459,7.526000022888184 0.6899999976158142,3.7060000896453857 2.197999954223633,2.197999954223633 C3.7060000896453857,0.6899999976158142 7.526000022888184,2.063999891281128 10.730999946594238,5.269000053405762z" />
+    </g>
+  </svg>
+);
 
 /** 文档问答预设问题（欢迎页一键提问） */
 const DOC_PROMPTS = [
@@ -661,7 +696,7 @@ const Copilot = (props: CopilotProps) => {
 
   const chatSender = (
     <Flex vertical gap={12} className={styles.chatSend}>
-      {/** 输入框：footer 提供模型选择与深度思考开关 */}
+      {/** 输入框：多行自适应，footer 左侧功能开关、右侧发送按钮 */}
       <Sender
         loading={isRequesting}
         value={inputValue}
@@ -674,7 +709,9 @@ const Copilot = (props: CopilotProps) => {
           abort();
         }}
         placeholder="针对文档提问，Enter 发送，Shift+Enter 换行"
-        footer={() => (
+        autoSize={{ minRows: 3, maxRows: 6 }}
+        suffix={false}
+        footer={(actionNode) => (
           <Flex
             justify="space-between"
             align="center"
@@ -693,7 +730,7 @@ const Copilot = (props: CopilotProps) => {
                   items: modelMenuItems,
                 }}
               >
-                <Sender.Switch value={false} icon={<ApiOutlined />}>
+                <Sender.Switch value={false} icon={<AntDesignOutlined />}>
                   {modelAbbr(selectedModel) || '选择模型'}
                 </Sender.Switch>
               </Dropdown>
@@ -712,8 +749,13 @@ const Copilot = (props: CopilotProps) => {
                     </>
                   }
                   onChange={(checked: boolean) => setEnableThinking(checked)}
+                  icon={<DeepThinkIcon />}
                 />
               )}
+            </Flex>
+            <Flex align="center">
+              <Divider orientation="vertical" />
+              {actionNode}
             </Flex>
           </Flex>
         )}
@@ -875,7 +917,7 @@ const CopilotDemo = () => {
             type="inner"
             style={{ height: '100%' }}
             // body 伸展撑满卡片并内部滚动（默认 flex 0 1 auto 不伸展）
-            bodyStyle={{ flex: 1, minHeight: 0, overflow: 'auto' }}
+            styles={{ body: { flex: 1, minHeight: 0, overflow: 'auto' } }}
             extra={
               !copilotOpen && (
                 <div
