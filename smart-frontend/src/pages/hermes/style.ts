@@ -317,43 +317,58 @@ export const useStyles = createStyles(({ css, token, isDarkMode }) => ({
   `,
 
   /* 会话列表滚动区：停靠态在侧栏剩余高度内独立滚动（按钮固定）。
-     滚动条默认隐去，仅在滚动期间显示（onScroll 切换 data-scrolling，
-     停止滚动 600ms 后自动隐藏）。scrollbar-gutter 预留宽度避免抖动。
-     Chromium/Safari 走 ::-webkit-scrollbar（自定义后由 overlay 变为
-     可着色滚动条）；标准 scrollbar-color 需隔离到 Firefox，否则会
-     覆盖伪元素自定义导致滚动条始终不可见。 */
+     原生滚动条完全隐藏——macOS 覆盖式滚动条会忽略 ::-webkit-scrollbar
+     着色，不同浏览器表现不一致；改由外层 scrollIndicator 自绘指示器：
+     滚动期间显示，停止 600ms 后淡出（右侧消息列表同样处理）。 */
   conversationList: css`
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     padding-block-end: 8px;
-    scrollbar-gutter: stable;
 
-    @supports (-moz-appearance: none) {
-      scrollbar-width: thin;
-      scrollbar-color: transparent transparent;
-    }
+    scrollbar-width: none;
+    -ms-overflow-style: none;
 
     &::-webkit-scrollbar {
-      width: 8px;
+      width: 0;
+      height: 0;
     }
-    &::-webkit-scrollbar-track {
-      background: transparent;
-    }
-    &::-webkit-scrollbar-thumb {
-      background: transparent;
-      border-radius: 4px;
+  `,
+
+  /* 会话列表滚动包装层：为自绘滚动指示器提供定位参照。 */
+  conversationScrollArea: css`
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    min-height: 0;
+  `,
+
+  /* 自绘滚动条轨道：透明，仅承载滑块定位（会话列表/消息列表共用）。 */
+  scrollIndicator: css`
+    && {
+      position: absolute;
+      top: 2px;
+      right: 3px;
+      bottom: 10px;
+      width: 6px;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 160ms ease;
     }
 
-    &[data-scrolling='true'] {
-      @supports (-moz-appearance: none) {
-        scrollbar-color: ${token.colorFill} transparent;
-      }
-
-      &::-webkit-scrollbar-thumb {
-        background: ${token.colorFill};
-      }
+    &[data-visible='true'] {
+      opacity: 1;
     }
+  `,
+
+  scrollIndicatorThumb: css`
+    position: absolute;
+    left: 0;
+    width: 100%;
+    min-height: 24px;
+    border-radius: 3px;
+    background: ${token.colorFill};
   `,
 
   conversationActions: css`
@@ -541,9 +556,18 @@ export const useStyles = createStyles(({ css, token, isDarkMode }) => ({
   `,
 
   messageList: css`
+    /* 消息列表滚动条与会话列表一致：原生滚动条隐藏，改用 messages 内的
+       自绘指示器（见 scrollIndicator），滚动时显示、停止后淡出。 */
     && .ant-bubble-list-scroll-box {
       height: 100%;
-      scrollbar-gutter: stable;
+
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+
+      &::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+      }
     }
 
     && .ant-bubble {

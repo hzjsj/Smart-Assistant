@@ -99,6 +99,7 @@ import {
   OPENCLAW_CHAT_API_URL,
 } from './service';
 import { useStyles } from './style';
+import { useAutoHideScrollbar } from './useAutoHideScrollbar';
 import {
   type RestoredHistory,
   useConversationHistory,
@@ -383,27 +384,12 @@ const HermesPage: React.FC = () => {
   >(new Set());
   const [renameTarget, setRenameTarget] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  // 会话列表滚动条自动显隐：滚动期间显示，停止 600ms 后隐藏。
-  const [listScrolling, setListScrolling] = useState(false);
-  const listScrollTimer = useRef<number | undefined>(undefined);
-  const handleListScroll = () => {
-    setListScrolling(true);
-    if (listScrollTimer.current !== undefined) {
-      window.clearTimeout(listScrollTimer.current);
-    }
-    listScrollTimer.current = window.setTimeout(() => {
-      setListScrolling(false);
-      listScrollTimer.current = undefined;
-    }, 600);
-  };
-  useEffect(
-    () => () => {
-      if (listScrollTimer.current !== undefined) {
-        window.clearTimeout(listScrollTimer.current);
-      }
-    },
-    [],
-  );
+  // 自绘滚动条：原生滚动条恒定隐藏，滚动期间显示指示器，停止 600ms
+  // 后淡出。避免依赖 ::-webkit-scrollbar（macOS 覆盖式滚动条下不可着色）
+  // 导致各浏览器表现不一致。会话列表与右侧消息列表共用同一套逻辑，
+  // 消息列表为反序滚动容器（scrollTop ≤ 0），需 reversed。
+  const conversationScroll = useAutoHideScrollbar();
+  const chatScroll = useAutoHideScrollbar({ reversed: true });
   /** 附件草稿按会话隔离；发送后清空，附件仅随当次消息生效。 */
   const [attachmentDrafts, setAttachmentDrafts] = useState<
     Record<string, ChatAttachmentDraft[]>
@@ -1161,51 +1147,66 @@ const HermesPage: React.FC = () => {
           toggleNavigation，移动端选会话后自动收起抽屉回到聊天区。 */}
       <WorkbenchActionsContext.Consumer>
         {({ isMobile, toggleNavigation }) => (
-          <Conversations
-            items={conversations}
-            // 会话列表独立滚动区：数据多时在列表内部滚动，入口按钮保持固定。
-            className={styles.conversationList}
-            // 滚动条自动显隐：滚动时显示，停止后隐藏。
-            onScroll={handleListScroll}
-            data-scrolling={listScrolling ? 'true' : undefined}
-            // 会话项始终保持当前会话选中（组卷视图下也保留，仅灰化上方入口按钮）。
-            activeKey={activeConversationKey}
-            onActiveChange={(key) => {
-              entryNavigation.cancel();
-              paperRequest.cancel();
-              activateConversation(key);
-              setView('chat');
-              if (isMobile) toggleNavigation(false);
-            }}
-            groupable
-            menu={(conversation) => ({
-              items: [
-                { key: 'rename', label: '重命名' },
-                { key: 'delete', label: '删除', danger: true },
-              ],
-              onClick: ({ key }) => {
-                if (key === 'delete') deleteConversation(conversation.key);
-                if (key === 'rename') {
-                  setRenameTarget(conversation.key);
-                  setRenameValue(
-                    typeof conversation.label === 'string'
-                      ? conversation.label
-                      : '',
-                  );
-                }
-              },
-              // 官方 menu.trigger API：后台流式中的会话在三点左侧附加 loading。
-              trigger: (info, { originNode }) =>
-                backgroundStreamingKeys.has(info.key) ? (
-                  <span className={styles.conversationStreamingBadge}>
-                    <LoadingOutlined spin />
-                    {originNode}
-                  </span>
-                ) : (
-                  originNode
-                ),
-            })}
-          />
+          <div className={styles.conversationScrollArea}>
+            <Conversations
+              items={conversations}
+              // 会话列表独立滚动区：数据多时在列表内部滚动，入口按钮保持固定。
+              className={styles.conversationList}
+              // 自绘滚动条自动显隐：滚动时显示，停止后淡出。
+              onScroll={conversationScroll.onScroll}
+              // 会话项始终保持当前会话选中（组卷视图下也保留，仅灰化上方入口按钮）。
+              activeKey={activeConversationKey}
+              onActiveChange={(key) => {
+                entryNavigation.cancel();
+                paperRequest.cancel();
+                activateConversation(key);
+                setView('chat');
+                if (isMobile) toggleNavigation(false);
+              }}
+              groupable
+              menu={(conversation) => ({
+                items: [
+                  { key: 'rename', label: '重命名' },
+                  { key: 'delete', label: '删除', danger: true },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'delete') deleteConversation(conversation.key);
+                  if (key === 'rename') {
+                    setRenameTarget(conversation.key);
+                    setRenameValue(
+                      typeof conversation.label === 'string'
+                        ? conversation.label
+                        : '',
+                    );
+                  }
+                },
+                // 官方 menu.trigger API：后台流式中的会话在三点左侧附加 loading。
+                trigger: (info, { originNode }) =>
+                  backgroundStreamingKeys.has(info.key) ? (
+                    <span className={styles.conversationStreamingBadge}>
+                      <LoadingOutlined spin />
+                      {originNode}
+                    </span>
+                  ) : (
+                    originNode
+                  ),
+              })}
+            />
+            {/* 自绘滚动指示器：原生滚动条已隐藏，仅滚动期间可见。 */}
+            <div
+              className={styles.scrollIndicator}
+              data-visible={conversationScroll.visible ? 'true' : undefined}
+              aria-hidden="true"
+            >
+              <div
+                className={styles.scrollIndicatorThumb}
+                style={{
+                  top: `${conversationScroll.thumb.top}%`,
+                  height: `${conversationScroll.thumb.height}%`,
+                }}
+              />
+            </div>
+          </div>
         )}
       </WorkbenchActionsContext.Consumer>
       <Modal
@@ -1373,8 +1374,24 @@ const HermesPage: React.FC = () => {
                             setAwayFromBottom(
                               Math.abs(event.currentTarget.scrollTop) > 80,
                             );
+                            // 消息列表自绘滚动条：反序滚动容器，按可视偏移换算。
+                            chatScroll.onScroll(event);
                           }}
                         />
+                        {/* 自绘滚动指示器：原生滚动条已隐藏，仅滚动期间可见。 */}
+                        <div
+                          className={styles.scrollIndicator}
+                          data-visible={chatScroll.visible ? 'true' : undefined}
+                          aria-hidden="true"
+                        >
+                          <div
+                            className={styles.scrollIndicatorThumb}
+                            style={{
+                              top: `${chatScroll.thumb.top}%`,
+                              height: `${chatScroll.thumb.height}%`,
+                            }}
+                          />
+                        </div>
                         {awayFromBottom && (
                           <button
                             type="button"
