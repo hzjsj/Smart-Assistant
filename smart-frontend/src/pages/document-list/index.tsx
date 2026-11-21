@@ -1,7 +1,7 @@
 import { UploadOutlined } from '@ant-design/icons';
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { history } from '@umijs/max';
 import { Button, message, Popconfirm, Upload } from 'antd';
 import React, { useCallback, useRef, useState } from 'react';
@@ -32,7 +32,6 @@ const downloadFile = async (
 
 const TableList: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
-  const queryClient = useQueryClient();
   const [messageApi, contextHolder] = message.useMessage();
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
@@ -44,7 +43,6 @@ const TableList: React.FC = () => {
     onSuccess: () => {
       setSelectedRowKeys([]);
       actionRef.current?.reloadAndRest?.();
-      queryClient.invalidateQueries({ queryKey: ['files'] });
       messageApi.success('删除成功');
     },
     onError: () => {

@@ -1,8 +1,8 @@
+import { API_BASE as BACKEND_API_BASE } from '@/utils/apiBase';
 import type { GenerateRequest, QuestionItem, QuestionType } from './data';
 
-// SSE 流式直连后端完整路径（不走 dev/preview proxy，避免 HPM 代理缓冲导致数据一次性吐出）
-// 生产部署时通过 nginx 的 proxy_buffering off 代理到后端，不依赖 dev proxy
-const API_BASE = 'http://localhost:5000/api/chujuanji';
+// SSE 流式直连后端完整路径（开发按主机直连 5000，生产同源 nginx 反代）
+const API_BASE = `${BACKEND_API_BASE}/api/chujuanji`;
 
 /**
  * 构建用户提示词
@@ -188,7 +188,7 @@ function extractCompleteQuestions(content: string): QuestionItem[] {
   const questionsMatch = jsonStr.match(/"questions"\s*:\s*\[/);
   if (!questionsMatch) return questions;
 
-  const arrayStart = questionsMatch.index! + questionsMatch[0].length - 1;
+  const arrayStart = (questionsMatch.index ?? 0) + questionsMatch[0].length - 1;
 
   // 3. 状态机扫描，提取完整的题目对象
   let i = arrayStart + 1;
@@ -337,7 +337,10 @@ export async function getExamList(params?: {
     if (params?.grade) queryParams.append('grade', params.grade);
     if (params?.exam_type) queryParams.append('exam_type', params.exam_type);
 
-    const response = await fetch(`${API_BASE}/exams?${queryParams.toString()}`, { credentials: 'include' });
+    const response = await fetch(
+      `${API_BASE}/exams?${queryParams.toString()}`,
+      { credentials: 'include' },
+    );
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -407,7 +410,8 @@ export async function getQuestionTypes(
 > {
   try {
     const response = await fetch(
-      `${API_BASE}/question-types?subject=${encodeURIComponent(subject)}&grade=${encodeURIComponent(grade)}`,{ credentials: 'include' },
+      `${API_BASE}/question-types?subject=${encodeURIComponent(subject)}&grade=${encodeURIComponent(grade)}`,
+      { credentials: 'include' },
     );
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);

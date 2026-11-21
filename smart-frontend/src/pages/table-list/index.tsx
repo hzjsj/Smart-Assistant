@@ -9,7 +9,7 @@ import {
   ProDescriptions,
   ProTable,
 } from '@ant-design/pro-components';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { Button, Drawer, type FormInstance, Input, message } from 'antd';
 import React, { useCallback, useRef, useState } from 'react';
 import { removeRule, rule } from '@/services/ant-design-pro/api';
@@ -18,7 +18,6 @@ import UpdateForm from './components/UpdateForm';
 
 const TableList: React.FC = () => {
   const actionRef = useRef<ActionType | null>(null);
-  const queryClient = useQueryClient();
 
   const [showDetail, setShowDetail] = useState<boolean>(false);
   const [currentRow, setCurrentRow] = useState<API.RuleListItem>();
@@ -31,7 +30,6 @@ const TableList: React.FC = () => {
     onSuccess: () => {
       setSelectedRows([]);
       actionRef.current?.reloadAndRest?.();
-      queryClient.invalidateQueries({ queryKey: ['rule'] });
 
       messageApi.success('Deleted successfully and will refresh soon');
     },
@@ -42,9 +40,7 @@ const TableList: React.FC = () => {
 
   const columns: ProColumns<API.RuleListItem>[] = [
     {
-      title: (
-        '规则名称'
-      ),
+      title: '规则名称',
       dataIndex: 'name',
       render: (dom, entity) => {
         return (
@@ -61,59 +57,42 @@ const TableList: React.FC = () => {
       },
     },
     {
-      title: (
-        '描述'
-      ),
+      title: '描述',
       dataIndex: 'desc',
       valueType: 'textarea',
     },
     {
-      title: (
-        '服务调用次数'
-      ),
+      title: '服务调用次数',
       dataIndex: 'callNo',
       sorter: true,
       hideInForm: true,
-      renderText: (val: string) =>
-        `${val}${'万'}`,
+      renderText: (val: string) => `${val}${'万'}`,
     },
     {
-      title: (
-        '状态'
-      ),
+      title: '状态',
       dataIndex: 'status',
       hideInForm: true,
       valueEnum: {
         0: {
-          text: (
-            '关闭'
-          ),
+          text: '关闭',
           status: 'Default',
         },
         1: {
-          text: (
-            '运行中'
-          ),
+          text: '运行中',
           status: 'Processing',
         },
         2: {
-          text: (
-            '已上线'
-          ),
+          text: '已上线',
           status: 'Success',
         },
         3: {
-          text: (
-            '异常'
-          ),
+          text: '异常',
           status: 'Error',
         },
       },
     },
     {
-      title: (
-        '上次调度时间'
-      ),
+      title: '上次调度时间',
       sorter: true,
       dataIndex: 'updatedAt',
       valueType: 'dateTime',
@@ -134,29 +113,18 @@ const TableList: React.FC = () => {
           return false;
         }
         if (`${status}` === '3') {
-          return (
-            <Input
-              {...rest}
-              placeholder={'请输入异常原因！'}
-            />
-          );
+          return <Input {...rest} placeholder={'请输入异常原因！'} />;
         }
         return defaultRender(item);
       },
     },
     {
-      title: (
-        '操作'
-      ),
+      title: '操作',
       dataIndex: 'option',
       valueType: 'option',
       render: (_, record) => [
         <UpdateForm
-          trigger={
-            <Button type="link">
-              配置
-            </Button>
-          }
+          trigger={<Button type="link">配置</Button>}
           key="config"
           onOk={actionRef.current?.reload}
           values={record}
@@ -216,18 +184,17 @@ const TableList: React.FC = () => {
         <FooterToolbar
           extra={
             <div>
-              '已选择' 
+              '已选择'
               <span style={{ fontWeight: 600 }}>
                 {selectedRowsState.length}
-              </span> 
-              '项'
-              &nbsp;&nbsp;
+              </span>
+              '项' &nbsp;&nbsp;
               <span>
-                '服务调用次数总计' 
+                '服务调用次数总计'
                 {selectedRowsState.reduce(
                   (pre, item) => pre + (item.callNo ?? 0),
                   0,
-                )} 
+                )}
                 '万'
               </span>
             </div>
@@ -241,9 +208,7 @@ const TableList: React.FC = () => {
           >
             批量删除
           </Button>
-          <Button type="primary">
-            批量审批
-          </Button>
+          <Button type="primary">批量审批</Button>
         </FooterToolbar>
       )}
 

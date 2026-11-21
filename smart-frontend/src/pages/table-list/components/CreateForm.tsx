@@ -5,7 +5,7 @@ import {
   ProFormText,
   ProFormTextArea,
 } from '@ant-design/pro-components';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { Button, message } from 'antd';
 import type { FC } from 'react';
 import { addRule } from '@/services/ant-design-pro/api';
@@ -18,13 +18,11 @@ const CreateForm: FC<CreateFormProps> = (props) => {
   const { reload } = props;
 
   const [messageApi, contextHolder] = message.useMessage();
-  const queryClient = useQueryClient();
 
   const { mutateAsync: run, isPending: loading } = useMutation({
     mutationFn: addRule,
     onSuccess: () => {
       messageApi.success('Added successfully');
-      queryClient.invalidateQueries({ queryKey: ['rule'] });
       reload?.();
     },
     onError: () => {
@@ -57,9 +55,7 @@ const CreateForm: FC<CreateFormProps> = (props) => {
           rules={[
             {
               required: true,
-              message: (
-                '规则名称为必填项'
-              ),
+              message: '规则名称为必填项',
             },
           ]}
           width="md"

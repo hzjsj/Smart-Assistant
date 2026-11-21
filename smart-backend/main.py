@@ -64,7 +64,32 @@ try:
 except Exception as e:  # pragma: no cover - 启动期不阻断
     print(f"[startup] seed failed: {e}")
 
-app = FastAPI(title="智能助手接口文档", version="1.0.0")
+# 清理过期会话僵尸行（todo 第 13 条：不活跃用户的过期行在登录时不会被顺带清理）
+try:
+    from database import SessionLocal
+    from users.sessions import cleanup_expired_sessions
+
+    _db = SessionLocal()
+    try:
+        _removed = cleanup_expired_sessions(_db)
+        if _removed:
+            print(f"[startup] 清理过期会话 {_removed} 条")
+    finally:
+        _db.close()
+except Exception as e:  # pragma: no cover - 启动期不阻断
+    print(f"[startup] cleanup sessions failed: {e}")
+
+# OpenAPI 文档门禁：默认开启（开发/联调依赖 /docs 与 /openapi.json），
+# 生产部署设 API_DOCS_ENABLED=false 同时关闭 docs/redoc/openapi 三个入口（todo 第 12 条）
+_api_docs_enabled = os.getenv("API_DOCS_ENABLED", "true").lower() == "true"
+
+app = FastAPI(
+    title="智能助手接口文档",
+    version="1.0.0",
+    docs_url="/docs" if _api_docs_enabled else None,
+    redoc_url="/redoc" if _api_docs_enabled else None,
+    openapi_url="/openapi.json" if _api_docs_enabled else None,
+)
 
 # CORS 白名单：显式列出来源。禁止 allow_origins=["*"] 与 allow_credentials=True
 # 同时使用（Starlette 会回显任意 Origin，任何网站都能携带 Cookie 调用 API）。

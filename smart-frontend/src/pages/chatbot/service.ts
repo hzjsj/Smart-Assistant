@@ -1,7 +1,8 @@
 // src/pages/chatbot/service.ts
 import { DeepSeekChatProvider, XRequest } from '@ant-design/x-sdk';
+import { API_BASE } from '@/utils/apiBase';
 
-export const CHAT_API_URL = 'http://localhost:5000/api/chat/completions';
+export const CHAT_API_URL = `${API_BASE}/api/chat/completions`;
 
 /**
  * 工厂 — 每个组件挂载创建一次（useMemo 包裹）。

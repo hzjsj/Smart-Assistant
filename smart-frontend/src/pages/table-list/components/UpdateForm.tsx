@@ -6,7 +6,7 @@ import {
   ProFormTextArea,
   StepsForm,
 } from '@ant-design/pro-components';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import { Modal, message } from 'antd';
 import React, { cloneElement, useCallback, useState } from 'react';
 import { updateRule } from '@/services/ant-design-pro/api';
@@ -19,7 +19,6 @@ type UpdateFormProps = {
 
 const UpdateForm: React.FC<UpdateFormProps> = (props) => {
   const { onOk, values, trigger } = props;
-  const queryClient = useQueryClient();
 
   const [open, setOpen] = useState(false);
 
@@ -29,7 +28,6 @@ const UpdateForm: React.FC<UpdateFormProps> = (props) => {
     mutationFn: updateRule,
     onSuccess: () => {
       messageApi.success('Configuration is successful');
-      queryClient.invalidateQueries({ queryKey: ['rule'] });
       onOk?.();
     },
     onError: () => {
@@ -86,10 +84,7 @@ const UpdateForm: React.FC<UpdateFormProps> = (props) => {
         }}
         onFinish={onFinish}
       >
-        <StepsForm.StepForm
-          initialValues={values}
-          title={'基本信息'}
-        >
+        <StepsForm.StepForm initialValues={values} title={'基本信息'}>
           <ProFormText
             name="name"
             label={'规则名称'}
@@ -97,9 +92,7 @@ const UpdateForm: React.FC<UpdateFormProps> = (props) => {
             rules={[
               {
                 required: true,
-                message: (
-                  '请输入规则名称！'
-                ),
+                message: '请输入规则名称！',
               },
             ]}
           />
@@ -111,9 +104,7 @@ const UpdateForm: React.FC<UpdateFormProps> = (props) => {
             rules={[
               {
                 required: true,
-                message: (
-                  '请输入至少五个字符的规则描述！'
-                ),
+                message: '请输入至少五个字符的规则描述！',
                 min: 5,
               },
             ]}
@@ -173,9 +164,7 @@ const UpdateForm: React.FC<UpdateFormProps> = (props) => {
             rules={[
               {
                 required: true,
-                message: (
-                  '请选择开始时间！'
-                ),
+                message: '请选择开始时间！',
               },
             ]}
           />

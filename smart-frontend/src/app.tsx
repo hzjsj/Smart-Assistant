@@ -3,7 +3,6 @@ import type { Settings as LayoutSettings } from '@ant-design/pro-components';
 import { SettingDrawer } from '@ant-design/pro-components';
 import type { RequestConfig, RunTimeLayoutConfig } from '@umijs/max';
 import { history, Link } from '@umijs/max';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import React from 'react';
@@ -11,14 +10,10 @@ import React from 'react';
 // Initialize dayjs plugins globally
 dayjs.extend(relativeTime);
 
-// document-list 等页面使用 @tanstack/react-query
-const queryClient = new QueryClient();
-
 import {
   AvatarDropdown,
   DocLink,
   ErrorBoundary,
-  Footer,
   LangDropdown,
   OfflineBanner,
   VersionDropdown,
@@ -203,10 +198,13 @@ export const request: RequestConfig = {
 };
 
 export function rootContainer(container: React.ReactNode) {
+  // react-query 的 Provider 由 umi reactQuery 插件统一注入（config/config.ts reactQuery），
+  // 此前这里又手动包了一层，形成双 QueryClientProvider——useQueryClient 可能解析到
+  // 与 useQuery 不同的 client，导致 invalidateQueries 落空（todo 第 27 条）。
   return (
-    <QueryClientProvider client={queryClient}>
+    <>
       <OfflineBanner />
       <ErrorBoundary>{container}</ErrorBoundary>
-    </QueryClientProvider>
+    </>
   );
 }

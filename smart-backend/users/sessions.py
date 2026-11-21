@@ -79,3 +79,18 @@ def _cleanup_user_expired(db: Session, user_id: int) -> None:
         UserSession.expires_at <= datetime.now(),
     ).delete()
     db.commit()
+
+
+def cleanup_expired_sessions(db: Session) -> int:
+    """删除全部已过期会话行，返回删除条数。
+
+    登录时按用户顺带清理只覆盖活跃用户；不活跃用户的僵尸行由
+    启动时的全量清理兜底（todo 第 13 条）。
+    """
+    deleted = (
+        db.query(UserSession)
+        .filter(UserSession.expires_at <= datetime.now())
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return deleted

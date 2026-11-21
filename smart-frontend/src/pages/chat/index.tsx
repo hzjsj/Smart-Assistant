@@ -22,7 +22,7 @@ import type { ComponentProps } from '@ant-design/x-markdown';
 import XMarkdown from '@ant-design/x-markdown';
 import type { DefaultMessageInfo } from '@ant-design/x-sdk';
 import { useXChat } from '@ant-design/x-sdk';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation } from '@tanstack/react-query';
 import {
   Avatar,
   Button,
@@ -265,7 +265,6 @@ const ChatPage: React.FC = () => {
   const { styles } = useStyles();
   const [markdownClassName] = useMarkdownTheme();
   const [messageApi, contextHolder] = message.useMessage();
-  const queryClient = useQueryClient();
 
   const [inputValue, setInputValue] = useState('');
   const [models, setModels] = useState<ChatModelItem[]>([]);
@@ -448,7 +447,6 @@ const ChatPage: React.FC = () => {
   const { mutate: deleteRun } = useMutation({
     mutationFn: deleteChatSession,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chat-sessions'] });
       refreshSessions();
     },
     onError: () => {
