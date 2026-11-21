@@ -21,7 +21,12 @@ from qieti.schemas import (
     SnapshotSaveResponse,
 )
 from qieti.service import cut_questions, is_oss_configured, upload_image_to_oss
+from users.models import User
+from utils.upload_guard import QIETI_UPLOAD_MAX_MB, ensure_extension, read_upload_limited
 from utils.url_guard import validate_public_url
+
+# 切题上传为试卷图片/PDF 页面
+QIETI_ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".pdf"}
 
 router = APIRouter(prefix="/api/qieti", tags=["切题"], dependencies=[Depends(get_current_user)])
 
@@ -137,13 +142,19 @@ def _normalize_snapshot_payload(payload: dict) -> dict:
 
 
 @router.post("/upload")
-async def upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    """上传切题图片到 OSS，并写入上传记录。响应结构与参考项目 /api/upload/single 一致。"""
+async def upload(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """上传切题图片到 OSS，并写入上传记录（按用户隔离）。响应结构与参考项目 /api/upload/single 一致。"""
     if not is_oss_configured():
         raise HTTPException(status_code=500, detail="OSS 未配置。请设置 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET / OSS_BUCKET 环境变量")
 
+    ensure_extension(file.filename, QIETI_ALLOWED_EXTENSIONS)
     try:
-        content = await file.read()
+        # 分片读取并强制大小上限（todo 21：不再整块读入内存）
+        content = await read_upload_limited(file, QIETI_UPLOAD_MAX_MB)
         result = await asyncio.to_thread(
             upload_image_to_oss,
             content,
@@ -164,6 +175,7 @@ async def upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
             file_type=file.content_type or "",
             file_size=len(content),
             uploaded_url=result.get("url", ""),
+            uid=current_user.userid,
         )
     except Exception as e:  # 记录失败不影响上传主流程
         print(f"[qieti] save upload record failed: {e}")
@@ -179,10 +191,16 @@ async def cut(request: CutRequest):
 
 
 @router.post("/snapshot", response_model=SnapshotSaveResponse)
-async def save_snapshot(payload: SnapshotPayload, db: Session = Depends(get_db)):
-    """保存题库快照（单行覆盖，snapshot_key='latest'）。"""
+async def save_snapshot(
+    payload: SnapshotPayload,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """保存题库快照（按用户覆盖写入，snapshot_key='latest:<uid>'）。"""
+    key = crud.snapshot_key_for(current_user.userid)
     snapshot = _normalize_snapshot_payload(payload.model_dump())
-    crud.upsert_snapshot(db, snapshot)
+    snapshot["snapshotKey"] = key
+    crud.upsert_snapshot(db, snapshot, key, uid=current_user.userid)
     return SnapshotSaveResponse(
         success=True,
         totalPages=snapshot["totalPages"],
@@ -192,16 +210,24 @@ async def save_snapshot(payload: SnapshotPayload, db: Session = Depends(get_db))
 
 
 @router.get("/snapshot", response_model=SnapshotGetResponse)
-async def get_snapshot(db: Session = Depends(get_db)):
-    """读取最新题库快照。"""
-    snapshot = crud.get_latest_snapshot(db)
+async def get_snapshot(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """读取当前用户的题库快照（历史遗留的全局 'latest' 行不再返回，避免跨用户泄漏）。"""
+    snapshot = crud.get_snapshot(db, crud.snapshot_key_for(current_user.userid))
     return SnapshotGetResponse(success=True, snapshot=snapshot)
 
 
 @router.get("/records", response_model=RecordsResponse)
-async def list_records(limit: int = 50, offset: int = 0, db: Session = Depends(get_db)):
-    """分页查询上传记录（id 倒序，与原 createdAt 倒序等价）。"""
+async def list_records(
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """分页查询上传记录（仅当前用户，id 倒序）。"""
     limit = max(1, min(200, limit))
     offset = max(0, offset)
-    records = crud.list_upload_records(db, limit=limit, offset=offset)
+    records = crud.list_upload_records(db, limit=limit, offset=offset, uid=current_user.userid)
     return RecordsResponse(success=True, records=records)

@@ -15,6 +15,7 @@ from documents.models import FileRecord
 from documents.schemas import FileUpdate, FileRecordResponse, FileRequestBody, ErrorResponse
 from documents import crud
 from utils.oss_upload import upload_to_oss, upload_url_to_oss, convert_md_to_docx
+from utils.upload_guard import DOCUMENTS_UPLOAD_MAX_MB, MINERU_UPLOAD_MAX_MB
 from users.models import User
 from auth import get_current_user
 from documents.knowledge import process_knowledge_zip, _convert_tiff_to_png
@@ -135,16 +136,23 @@ def _transfer_images_to_oss(md_content: str, md_dir: str, timestamp: str, extrac
     return md_content, oss_image_urls
 
 
-def _save_upload_file(file: UploadFile, file_path: str) -> int:
-    """分片保存上传文件，返回文件大小。"""
+def _save_upload_file(file: UploadFile, file_path: str, max_mb: int) -> int:
+    """分片保存上传文件到本地，返回文件大小；超过 max_mb 抛 HTTPException(413)。"""
+    max_bytes = max_mb * 1024 * 1024
     total_size = 0
     with open(file_path, "wb") as f:
         while True:
             chunk = file.file.read(1024 * 1024)  # 1MB 分片
             if not chunk:
                 break
-            f.write(chunk)
             total_size += len(chunk)
+            if total_size > max_bytes:
+                f.close()
+                os.remove(file_path)
+                raise HTTPException(
+                    status_code=413, detail=f"文件过大，最大支持 {max_mb}MB"
+                )
+            f.write(chunk)
     return total_size
 
 
@@ -264,9 +272,13 @@ async def upload_file(
     saved_name = f"{uuid.uuid4().hex}{ext}"
     file_path = os.path.join(UPLOAD_DIR, saved_name)
 
-    # 分片保存上传文件到本地
+    # 分片保存上传文件到本地（强制大小上限，超限 413）
     try:
-        file_size = _save_upload_file(file, file_path)
+        file_size = _save_upload_file(file, file_path, DOCUMENTS_UPLOAD_MAX_MB)
+    except HTTPException:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise
     except Exception:
         traceback.print_exc()
         return {"status": "error", "data": {"filename": original_name, "download_url": None}}
@@ -548,7 +560,11 @@ async def mineru_upload_file(
     file_path = os.path.join(UPLOAD_DIR, saved_name)
 
     try:
-        _save_upload_file(file, file_path)
+        _save_upload_file(file, file_path, MINERU_UPLOAD_MAX_MB)
+    except HTTPException:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise
     except Exception:
         traceback.print_exc()
         return {"status": "error", "data": {"filename": original_name, "download_url": None}}

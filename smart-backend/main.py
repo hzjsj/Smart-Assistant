@@ -34,8 +34,24 @@ from bailian.router import router as bailian_router
 from langchain_agent.router import router as langchain_agent_router
 from openclaw.router import router as openclaw_router
 from wecom.router import router as wecom_router
+from utils.schema_upgrade import ensure_column, ensure_index
 
 Base.metadata.create_all(bind=engine)
+
+# 轻量幂等结构升级（无 Alembic 阶段兜底，见 ARCHITECTURE.md 路线图 Phase B / todo 4+7+19）：
+# qieti 两表补 uid 列 + 上传记录表补 (uid, created_at) 复合索引
+ensure_column(
+    engine, "qieti_upload_records", "uid",
+    "ALTER TABLE qieti_upload_records ADD COLUMN uid VARCHAR(50) NULL COMMENT '上传用户 userid（历史遗留行为 NULL）'",
+)
+ensure_index(
+    engine, "qieti_upload_records", "ix_qieti_upload_uid_created",
+    "ALTER TABLE qieti_upload_records ADD INDEX ix_qieti_upload_uid_created (uid, created_at)",
+)
+ensure_column(
+    engine, "qieti_snapshots", "uid",
+    "ALTER TABLE qieti_snapshots ADD COLUMN uid VARCHAR(50) NULL COMMENT '快照属主 userid（历史遗留行为 NULL）'",
+)
 
 # 上传文件临时目录（转换前的本地暂存）
 os.makedirs("uploads", exist_ok=True)
