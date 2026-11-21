@@ -95,6 +95,13 @@ def _snapshot_json(state: dict[str, Any]) -> str:
     )
 
 
+# ── 公共 API 转正（Phase D 收口，todo 第 29 条）────────────────────────
+# 历史上适配器与测试直接引用私有名（_parse_sse_events/_accumulate）；
+# 转正为导出契约，私有名保留别名以兼容既有引用。
+parse_sse_events = _parse_sse_events
+accumulate_stream_events = _accumulate
+
+
 STREAM_FLUSH_INTERVAL = 0.8  # 秒：生成中内容的节流刷新间隔（供前端续播）
 
 

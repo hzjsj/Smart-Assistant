@@ -1,4 +1,4 @@
-"""OpenClaw Gateway OpenAI 兼容接口配置与流式转发。
+"""OpenClaw Gateway OpenAI 兼容接口配置与流式转发（骨架委托 chat_proxy 公共层）。
 
 上游是完整的 OpenClaw agent（自带系统提示词、技能与 40+ 工具），
 因此多轮上下文交由上游会话维护：带 conversation_id 时以 ``user``
@@ -7,90 +7,56 @@ messages。上游输出标准 OpenAI SSE，直接交由 conversations 采集器
 直通落库（deepseek 同款，无需适配器）。
 """
 
-import json
-import os
-from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
-DEFAULT_BASE_URL = "https://mcp.example.invalid/v1"  # 占位：必须显式配置
+from chat_proxy import (
+    UpstreamError,
+    UpstreamSettings,
+    bearer_headers,
+    load_settings,
+    open_upstream_stream,
+    upstream_error_detail as _shared_error_detail,
+    upstream_status_code as _shared_status_code,
+)
+
+# 占位：必须显式配置 OPENCLAW_BASE_URL
+DEFAULT_BASE_URL = None
 DEFAULT_MODEL = "openclaw/default"
+_LABEL = "OpenClaw"
 
 
-class OpenClawError(Exception):
+class OpenClawError(UpstreamError):
     """可安全返回给客户端的 OpenClaw 代理错误。"""
 
-    def __init__(self, status_code: int, detail: str):
-        super().__init__(detail)
-        self.status_code = status_code
-        self.detail = detail
+
+# 兼容别名：既有测试与调用方以 OpenClawSettings 命名构造（Phase D 骨架统一后的过渡别名）
+OpenClawSettings = UpstreamSettings
 
 
-@dataclass(frozen=True)
-class OpenClawSettings:
-    base_url: str
-    api_key: str
-    model: str
-    timeout: httpx.Timeout
-
-
-def get_settings() -> OpenClawSettings:
-    api_key = os.getenv("OPENCLAW_API_KEY", "").strip()
-    if not api_key:
-        raise OpenClawError(500, "服务端未配置 OPENCLAW_API_KEY")
-
-    base_url = os.getenv("OPENCLAW_BASE_URL", "").strip().rstrip("/")
-    if not base_url:
-        raise OpenClawError(500, "服务端未配置 OPENCLAW_BASE_URL")
-
-    try:
-        connect_timeout = float(os.getenv("OPENCLAW_CONNECT_TIMEOUT", "15"))
-        # OpenClaw agent 内部可能执行多轮工具循环，单次请求耗时较长。
-        read_timeout = float(os.getenv("OPENCLAW_READ_TIMEOUT", "300"))
-    except ValueError as exc:
-        raise OpenClawError(500, "OpenClaw 超时配置无效") from exc
-
-    return OpenClawSettings(
-        base_url=base_url,
-        api_key=api_key,
-        model=os.getenv("OPENCLAW_MODEL", DEFAULT_MODEL),
-        timeout=httpx.Timeout(
-            connect=connect_timeout,
-            read=read_timeout,
-            write=60,
-            pool=connect_timeout,
-        ),
+def get_settings() -> UpstreamSettings:
+    return load_settings(
+        env_prefix="OPENCLAW",
+        default_base_url=DEFAULT_BASE_URL,
+        default_model=DEFAULT_MODEL,
+        error_cls=OpenClawError,
+        label=_LABEL,
+        default_connect_timeout=15,
+        write_timeout=60,
     )
 
 
-def get_headers(settings: OpenClawSettings) -> dict[str, str]:
-    return {
-        "Authorization": f"Bearer {settings.api_key}",
-        "Content-Type": "application/json",
-        "Accept": "text/event-stream",
-    }
+def get_headers(settings: UpstreamSettings) -> dict[str, str]:
+    return bearer_headers(settings, accept_sse=True)
 
 
 def upstream_error_detail(body: bytes) -> str:
-    """仅提取上游公开错误消息，不把完整响应或配置返回给浏览器。"""
-    try:
-        payload = json.loads(body)
-        error = payload.get("error", {})
-        message = error.get("message") if isinstance(error, dict) else None
-        if isinstance(message, str) and message.strip():
-            return f"OpenClaw 上游错误：{message.strip()[:500]}"
-    except (UnicodeDecodeError, json.JSONDecodeError, AttributeError):
-        pass
-    return "OpenClaw 上游请求失败"
+    return _shared_error_detail(body, _LABEL)
 
 
 def upstream_status_code(status_code: int) -> int:
-    if status_code == 429:
-        return 429
-    if status_code == 408:
-        return 504
-    return 502
+    return _shared_status_code(status_code)
 
 
 def _content_to_text(content: str | list[dict[str, Any]]) -> str:
@@ -179,28 +145,11 @@ async def open_chat_stream(
         payload.get("attachments") or [],
         settings.model,
     )
-    client = httpx.AsyncClient(timeout=settings.timeout)
-    try:
-        request = client.build_request(
-            "POST",
-            f"{settings.base_url}/chat/completions",
-            headers=get_headers(settings),
-            json=body,
-        )
-        response = await client.send(request, stream=True)
-        if response.is_error:
-            error_body = await response.aread()
-            detail = upstream_error_detail(error_body)
-            status_code = upstream_status_code(response.status_code)
-            await response.aclose()
-            raise OpenClawError(status_code, detail)
-        return client, response
-    except httpx.TimeoutException as exc:
-        await client.aclose()
-        raise OpenClawError(504, "OpenClaw 连接超时") from exc
-    except httpx.RequestError as exc:
-        await client.aclose()
-        raise OpenClawError(502, "无法连接 OpenClaw 服务") from exc
-    except Exception:
-        await client.aclose()
-        raise
+    return await open_upstream_stream(
+        settings,
+        "/chat/completions",
+        body,
+        error_cls=OpenClawError,
+        label=_LABEL,
+        accept_sse=True,
+    )

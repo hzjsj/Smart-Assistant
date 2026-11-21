@@ -29,17 +29,14 @@ from typing import Any
 
 import httpx
 
+from chat_proxy import UpstreamError, upstream_status_code as _shared_status_code
+
 DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/api/v1/apps"
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
 
 
-class BailianAgentError(Exception):
+class BailianAgentError(UpstreamError):
     """可安全返回给客户端的百炼代理错误。"""
-
-    def __init__(self, status_code: int, detail: str):
-        super().__init__(detail)
-        self.status_code = status_code
-        self.detail = detail
 
 
 class BailianSessionExpired(BailianAgentError):
@@ -121,9 +118,7 @@ def _is_session_expired(
 
 
 def upstream_status_code(status_code: int) -> int:
-    if status_code == 429:
-        return 429
-    return 502
+    return _shared_status_code(status_code)
 
 
 def build_lists(attachments: list[dict[str, Any]]) -> tuple[list[str], list[str]]:

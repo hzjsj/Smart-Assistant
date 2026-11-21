@@ -23,7 +23,7 @@ from langchain_core.messages import (
 )
 from pydantic import BaseModel
 
-from chat.llm import PROVIDERS, MODELS, extract_reasoning, get_chat_model, get_context_tokens
+from chat_proxy.providers import PROVIDERS, MODELS, extract_reasoning, get_chat_model, get_context_tokens
 
 from .mcp_tools import load_mcp_tools, mcp_enabled
 from .schemas import LangChainChatMessage, LangChainChatRequest
