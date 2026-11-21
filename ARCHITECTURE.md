@@ -196,13 +196,15 @@ smart-frontend/src/
 
 | 阶段 | 内容 | 覆盖 todo | 状态 |
 |---|---|---|---|
-| **0** | 本文档 | 8、11 文档化 | ✅ |
-| **A** | P0 安全包：documents 6 端点鉴权+属主、SSRF 收口、试卷属主、CORS 白名单、httponly×3、db dump 出库 | 1、2、16、17、18、20 | ⬜ |
-| **B** | qieti 数据隔离 + 索引（幂等启动迁移）+ 统一 save_upload helper | 4、7、19、21 | ⬜ |
-| **C** | 生产可用：SSE_API_BASE 统一、/docs 生产关闭、过期 session 清理、双 QueryClientProvider 合并 | 3、12、13、27 | ⬜ |
-| **D** | 后端重构：chat_proxy 公共层合并 5 份骨架、conversations 收口、打断 documents↔mineru 循环；性能：mineru 阻塞点、documents 连接池、知识点树 N+1、chat 查询限额、auth JOIN | 29(后端)、5、6、22、23、14、10(自检) | ⬜ |
-| **E** | 前端重构：chat-kit 统一三页、流式中止与竞态修复、utils 统一、bundle 清理、死代码删除 | 29(前端)、28、24、30(代码部分) | ⬜ |
-| **F** | 工程化：CI（Gitee Go/Actions）、biome 规则渐进开启、文档漂移修正 | 25、26、30(文档部分) | ⬜ |
+| **0** | 本文档 | 8、11 文档化 | ✅ `268b321` |
+| **A** | P0 安全包：documents 6 端点鉴权+属主、SSRF 收口、试卷属主、CORS 白名单、httponly×3、db dump 出库 | 1、2、16、17、18、20 | ✅ `fac7c01` |
+| **B** | qieti 数据隔离 + 索引（幂等启动迁移）+ 统一 save_upload helper | 4、7、19、21 | ✅ `9f3b083` |
+| **C** | 生产可用：SSE_API_BASE 统一、/docs 生产关闭、过期 session 清理、双 QueryClientProvider 合并 | 3、12、13、27 | ✅ `03f64af` |
+| **D** | 后端重构：chat_proxy 公共层合并 5 份骨架、conversations 收口、打断 documents↔mineru 循环；性能：mineru 阻塞点、documents 连接池、知识点树 N+1、chat 查询限额、auth JOIN | 29(后端)、5、6、22、23、14、10(自检) | ✅ `8452d49` + `e0dac17` |
+| **E** | 前端重构：chat-kit 统一三页、流式中止与竞态修复、死代码删除 | 29(前端)、28、30(代码部分) | ✅ `60f3ba9` |
+| **F** | 工程化：CI、lint-staged 修复、biome 渐进开启、文档漂移修正 | 25、26、30(文档部分) | ✅ `cab8651` |
+
+**遗留**（择机）：todo 第 24 条（bundle 构建分析）、第 26/29/30 条的残留子项（any 渐进清理、下载 helper 合并、组卷菜单抽取）、运维项 9/15。
 
 **不在开发范围内（运维/手动）**：
 
