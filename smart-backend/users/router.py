@@ -16,8 +16,8 @@ from users.sessions import (
     create_session,
     delete_session,
     get_session_user_id,
+    set_session_cookie,
     SESSION_COOKIE_NAME,
-    SESSION_TTL_DAYS,
 )
 
 router = APIRouter(tags=["用户管理"])
@@ -81,13 +81,7 @@ def login_account(body: LoginParams, response: Response, db: Session = Depends(g
         return LoginResult(status="error", type=body.type, currentAuthority="guest").model_dump()
 
     token = create_session(db, user.id)
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=token,
-        httponly=False,
-        samesite="lax",
-        max_age=SESSION_TTL_DAYS * 24 * 3600,
-    )
+    set_session_cookie(response, token)
     return LoginResult(status="ok", type=body.type, currentAuthority=user.access).model_dump()
 
 
@@ -115,13 +109,7 @@ def login_by_ticket(body: TicketLoginRequest, response: Response, db: Session = 
         return TicketLoginResult(status="error", message="用户不存在").model_dump()
 
     token = create_session(db, user.id)
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=token,
-        httponly=False,
-        samesite="lax",
-        max_age=SESSION_TTL_DAYS * 24 * 3600,
-    )
+    set_session_cookie(response, token)
     return TicketLoginResult(status="ok").model_dump()
 
 

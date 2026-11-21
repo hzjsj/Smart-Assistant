@@ -2,9 +2,11 @@
 
 后端重启不丢失登录态。所有会话操作集中在此处，鉴权点统一调用。
 """
+import os
 import secrets
 from datetime import datetime, timedelta
 
+from fastapi import Response
 from sqlalchemy.orm import Session
 
 from users.models import UserSession
@@ -28,6 +30,22 @@ def create_session(db: Session, user_id: int) -> str:
     db.commit()
     _cleanup_user_expired(db, user_id)
     return token
+
+
+def set_session_cookie(response: Response, token: str) -> None:
+    """登录成功后统一签发会话 cookie（账号 / ticket / 企微三处共用）。
+
+    HttpOnly 防止脚本读取 token；secure 由 env COOKIE_SECURE 控制
+    （本地 HTTP 开发默认 false，生产经 HTTPS 部署设为 true）。
+    """
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=os.getenv("COOKIE_SECURE", "false").lower() == "true",
+        samesite="lax",
+        max_age=SESSION_TTL_DAYS * 24 * 3600,
+    )
 
 
 def get_session_user_id(db: Session, token: str | None) -> int | None:

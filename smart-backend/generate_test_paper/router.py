@@ -241,27 +241,42 @@ async def list_exams(
     grade: Optional[str] = None,
     exam_type: Optional[str] = None,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    """获取试卷列表"""
-    items, total = get_exam_list(db, skip, limit, subject, grade, exam_type)
+    """获取试卷列表（非管理员仅返回自己创建的试卷）"""
+    user_id = None if current_user.access == "admin" else current_user.id
+    items, total = get_exam_list(db, skip, limit, subject, grade, exam_type, user_id)
     return ExamListResponse(total=total, items=items)
 
 
 @router.get("/exams/{exam_id}", response_model=ExamResponse, operation_id="getExamDetailApiChujuanjiExamsExamIdGet")
-async def get_exam_detail(exam_id: int, db: Session = Depends(get_db)):
-    """获取试卷详情"""
+async def get_exam_detail(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """获取试卷详情（非管理员仅可访问自己创建的试卷）"""
     exam = get_exam(db, exam_id)
     if not exam:
         raise HTTPException(status_code=404, detail="试卷不存在")
+    if current_user.access != "admin" and exam.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权访问该试卷")
     return exam
 
 
 @router.delete("/exams/{exam_id}", operation_id="removeExamApiChujuanjiExamsExamIdDelete")
-async def remove_exam(exam_id: int, db: Session = Depends(get_db)):
-    """删除试卷"""
-    success = delete_exam(db, exam_id)
-    if not success:
+async def remove_exam(
+    exam_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """删除试卷（非管理员仅可删除自己创建的试卷）"""
+    exam = get_exam(db, exam_id)
+    if not exam:
         raise HTTPException(status_code=404, detail="试卷不存在")
+    if current_user.access != "admin" and exam.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权删除该试卷")
+    delete_exam(db, exam_id)
     return {"message": "删除成功"}
 
 

@@ -50,9 +50,20 @@ except Exception as e:  # pragma: no cover - 启动期不阻断
 
 app = FastAPI(title="智能助手接口文档", version="1.0.0")
 
+# CORS 白名单：显式列出来源。禁止 allow_origins=["*"] 与 allow_credentials=True
+# 同时使用（Starlette 会回显任意 Origin，任何网站都能携带 Cookie 调用 API）。
+# 开发默认放行本机前端；生产通过 env CORS_ALLOW_ORIGINS 配置正式域名（逗号分隔）。
+_cors_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOW_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000"
+    ).split(",")
+    if origin.strip()
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

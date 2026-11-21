@@ -9,8 +9,7 @@ from users.models import User
 from users.schemas import ErrorResponse, LoginResult
 from users.sessions import (
     create_session,
-    SESSION_COOKIE_NAME,
-    SESSION_TTL_DAYS,
+    set_session_cookie,
 )
 from wecom.client import WeComClient
 
@@ -90,11 +89,5 @@ async def wecom_login(
 
     # 签发会话 + 写 cookie（与 /api/login/account 一致）
     token = create_session(db, user.id)
-    response.set_cookie(
-        key=SESSION_COOKIE_NAME,
-        value=token,
-        httponly=False,
-        samesite="lax",
-        max_age=SESSION_TTL_DAYS * 24 * 3600,
-    )
+    set_session_cookie(response, token)
     return LoginResult(status="ok", type="wecom", currentAuthority=user.access).model_dump()

@@ -9,6 +9,8 @@ from datetime import datetime
 from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from utils.url_guard import validate_public_url
+
 load_dotenv()
 
 OSS_BUCKET = os.getenv("OSS_BUCKET", "kdsa")
@@ -88,6 +90,9 @@ def upload_to_oss(local_file_path: str, object_key: str = None) -> dict:
 
 
 def upload_url_to_oss(image_url: str, object_key: str = None, retries: int = None) -> dict:
+    # SSRF 防护收口：本函数会用服务端网络拉取调用方传入的 URL（来源可能是用户
+    # 上传的 markdown/docx 内容），必须拦截内网、环回、link-local（云元数据）目标
+    validate_public_url(image_url)
     if object_key and oss_object_exists(object_key):
         return {"url": _make_url(object_key), "object_key": object_key, "bucket": OSS_BUCKET, "source_url": image_url, "cached": True}
 

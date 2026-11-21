@@ -48,6 +48,7 @@ from mineru.service import get_mineru_config
 from conversations.crud import record_user_message
 from conversations.service import stream_upstream_with_recording
 from hermes.service import HermesError, open_chat_stream
+from utils.url_guard import validate_public_url
 
 router = APIRouter(prefix="/api/mineru", tags=["MinerU 解析模块"])
 
@@ -59,8 +60,10 @@ def submit_task(
     current_user=Depends(get_current_user),
 ):
     try:
+        # SSRF 防护：pdf_url 为用户可控 URL，由 MinerU 服务端拉取，禁止内网目标
+        pdf_url = validate_public_url(request.pdf_url)
         result = submit_task_to_mineru(
-            request.pdf_url,
+            pdf_url,
             model_version=request.model_version,
             is_ocr=request.is_ocr,
             enable_formula=request.enable_formula,
@@ -70,14 +73,14 @@ def submit_task(
         )
         # 落库为任务记录（任务管理页可见，与文件上传解析同一张表）；
         # 后续状态推进复用任务列表接口的轮询自愈机制
-        name = os.path.basename(urlparse(request.pdf_url).path) or "webpage"
+        name = os.path.basename(urlparse(pdf_url).path) or "webpage"
         crud.create_file_record(
             db=db,
             original_name=name,
             saved_name=uuid.uuid4().hex,
             file_path="",
             file_size=0,
-            download_url=request.pdf_url,
+            download_url=pdf_url,
             uid=current_user.userid,
             mineru_task_id=result["task_id"],
             mineru_state="submitted",

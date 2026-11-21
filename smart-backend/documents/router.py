@@ -7,7 +7,7 @@ import pypandoc
 import asyncio
 import requests
 from datetime import datetime
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Request, Path
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Path
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from database import get_db, get_sync_db
@@ -15,7 +15,6 @@ from documents.models import FileRecord
 from documents.schemas import FileUpdate, FileRecordResponse, FileRequestBody, ErrorResponse
 from documents import crud
 from utils.oss_upload import upload_to_oss, upload_url_to_oss, convert_md_to_docx
-from users.sessions import get_session_user_id, SESSION_COOKIE_NAME
 from users.models import User
 from auth import get_current_user
 from documents.knowledge import process_knowledge_zip, _convert_tiff_to_png
@@ -243,7 +242,11 @@ def _process_docx_md(file_path: str, ext: str, original_name: str, base_name: st
 
 
 @router.post("/upload", operation_id="uploadFileApiFilesUploadPost")
-async def upload_file(request: Request, file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_file(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     ext = os.path.splitext(file.filename)[1].lower()
     if ext == ".doc":
         return {"status": "error", "data": {"filename": file.filename, "download_url": None},
@@ -252,13 +255,8 @@ async def upload_file(request: Request, file: UploadFile = File(...), db: Sessio
         return {"status": "error", "data": {"filename": file.filename, "download_url": None},
                 "errorMessage": f"不支持的文件格式 {ext}，仅支持 .docx / .md / .zip"}
 
-    # 获取登录用户 uid
-    uid = None
-    user_id = get_session_user_id(db, request.cookies.get(SESSION_COOKIE_NAME))
-    if user_id is not None:
-        user = db.query(User).filter_by(id=user_id).first()
-        if user:
-            uid = user.userid
+    # 文件属主 = 当前登录用户 userid（未登录由 get_current_user 抛 401）
+    uid = current_user.userid
 
     original_name = file.filename
     base_name = os.path.splitext(original_name)[0]
@@ -303,49 +301,95 @@ def list_files(
 
 
 @router.post("", responses={401: {"model": ErrorResponse}}, operation_id="handleFileApiFilesPost")
-def handle_file(body: FileRequestBody, db: Session = Depends(get_db)):
+def handle_file(
+    body: FileRequestBody,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     method = body.method
     data = body.data or {}
+    is_admin = current_user.access == "admin"
+
+    def _assert_owner(record: FileRecord) -> bool:
+        """属主校验：本人或管理员可操作；uid 为 NULL 的历史遗留记录仅管理员可操作。"""
+        if is_admin or record.uid is None:
+            return True
+        return record.uid == current_user.userid
 
     if method == "update":
         file_id = data.get("id")
         if file_id is None:
             return {"success": False, "errorMessage": "缺少文件ID"}
+        record = crud.get_file_record(db, int(file_id))
+        if not record:
+            return {"success": False, "errorMessage": "文件不存在"}
+        if not _assert_owner(record):
+            return {"success": False, "errorMessage": "无权操作该文件"}
         update_data = {}
         if "original_name" in data:
             update_data["original_name"] = data["original_name"]
         record = crud.update_file_record(db, int(file_id), FileUpdate(**update_data))
-        if not record:
-            return {"success": False, "errorMessage": "文件不存在"}
         return crud._to_dict(record)
 
     elif method == "delete":
         ids = data.get("id", data.get("key", []))
         if isinstance(ids, int):
             ids = [ids]
-        crud.delete_file_records(db, [int(i) for i in ids])
+        ids = [int(i) for i in ids]
+        if not is_admin:
+            records = db.query(FileRecord).filter(FileRecord.id.in_(ids)).all()
+            denied = [r.id for r in records if not _assert_owner(r)]
+            if denied:
+                return {"success": False, "errorMessage": f"{len(denied)} 个文件无权删除"}
+        crud.delete_file_records(db, ids)
         return {}
 
     return {}
 
 
 @router.get("/download/{saved_name}")
-def download_file(saved_name: str, db: Session = Depends(get_db)):
+def download_file(
+    saved_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     record = db.query(FileRecord).filter(FileRecord.saved_name == saved_name).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="文件不存在")
+    # 属主校验：本人或管理员；uid 为 NULL 的历史遗留记录放行下载
+    if (
+        current_user.access != "admin"
+        and record.uid is not None
+        and record.uid != current_user.userid
+    ):
+        raise HTTPException(status_code=403, detail="无权下载该文件")
     file_path = os.path.join(UPLOAD_DIR, saved_name)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="文件不存在")
-    original_name = record.original_name if record else saved_name
-    return FileResponse(file_path, filename=original_name)
+    return FileResponse(file_path, filename=record.original_name)
 
 
 @router.get("/download-md/{md_saved_name}")
-def download_md_file(md_saved_name: str, db: Session = Depends(get_db)):
+def download_md_file(
+    md_saved_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # md_file_path 存储完整本地路径，contains 命中后按文件名精确复核（修复子串误配）
     record = db.query(FileRecord).filter(FileRecord.md_file_path.contains(md_saved_name)).first()
+    if not record or os.path.basename(record.md_file_path) != md_saved_name:
+        raise HTTPException(status_code=404, detail="Markdown文件不存在")
+    # 属主校验：本人或管理员；uid 为 NULL 的历史遗留记录放行下载
+    if (
+        current_user.access != "admin"
+        and record.uid is not None
+        and record.uid != current_user.userid
+    ):
+        raise HTTPException(status_code=403, detail="无权下载该文件")
     md_path = os.path.join(UPLOAD_DIR, md_saved_name)
     if not os.path.exists(md_path):
         raise HTTPException(status_code=404, detail="Markdown文件不存在")
-    original_name = os.path.splitext(record.original_name)[0] + ".md" if record else md_saved_name
+    original_name = os.path.splitext(record.original_name)[0] + ".md"
     return FileResponse(md_path, filename=original_name)
 
 
@@ -365,14 +409,22 @@ def download_md_file(md_saved_name: str, db: Session = Depends(get_db)):
 # 1. 路径中的 {file_id} 改为 {fileId}
 # 2. 加上 operation_id 锁定前端函数名
 @router.get("/file/{fileId}/download", operation_id="getDownloadUrl")
-def get_download_url( 
-    # 3. 参数名改为 fileId
-    fileId: int = Path(..., description="文件ID"), 
-    db: Session = Depends(get_db)
+def get_download_url(
+    # 参数名改为 fileId，加 operation_id 锁定前端函数名
+    fileId: int = Path(..., description="文件ID"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    record = crud.get_file_record(db, fileId) # 4. 内部调用也同步修改
+    record = crud.get_file_record(db, fileId)
     if not record:
         raise HTTPException(status_code=404, detail="文件不存在")
+    # 属主校验：本人或管理员；uid 为 NULL 的历史遗留记录放行
+    if (
+        current_user.access != "admin"
+        and record.uid is not None
+        and record.uid != current_user.userid
+    ):
+        raise HTTPException(status_code=403, detail="无权访问该文件")
     return {
         "id": record.id,
         "original_name": record.original_name,
@@ -475,9 +527,9 @@ def _process_mineru_upload(file_path: str, ext: str, original_name: str,
 
 @router.post("/mineru/upload")
 async def mineru_upload_file(
-    request: Request,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in MINERU_ALLOWED_EXTENSIONS:
@@ -487,12 +539,8 @@ async def mineru_upload_file(
             "errorMessage": f"MinerU 不支持的文件格式 {ext}，仅支持 .pdf / .docx / .doc / .md",
         }
 
-    uid = None
-    user_id = get_session_user_id(db, request.cookies.get(SESSION_COOKIE_NAME))
-    if user_id is not None:
-        user = db.query(User).filter_by(id=user_id).first()
-        if user:
-            uid = user.userid
+    # 文件属主 = 当前登录用户 userid（未登录由 get_current_user 抛 401）
+    uid = current_user.userid
 
     original_name = file.filename
     timestamp = generate_timestamp()

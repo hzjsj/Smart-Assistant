@@ -1,10 +1,13 @@
 # 智能助手平台一键启动：MySQL + 后端 + 前端（nginx 反代）
-# 用法：cp smart-backend/.env.example smart-backend/.env（填好密钥）后执行
-#   docker compose up -d --build
+# 用法：
+#   1. cp smart-backend/.env.example smart-backend/.env（填好密钥）
+#   2. 在仓库根目录创建 .env 并设置 MYSQL_ROOT_PASSWORD（compose 自动读取）
+#   3. docker compose up -d --build
 # 访问：前端 http://localhost:8000 · 后端文档 http://localhost:5000/docs
 #
 # 说明：
 # - 容器化 MySQL 与本地 MySQL 并存（映射 3307:3306），互不影响
+# - MySQL root 密码必须显式注入（:? 语法强制），不再在仓库中提供默认值
 # - 后端数据库连接由下方 environment 强制指向容器内 MySQL
 #   （environment 优先级高于 env_file，数据库密码与 MySQL root 密码成对配置）
 # - 其余密钥（LLM API Key 等）从 smart-backend/.env 注入，不要提交该文件
@@ -14,7 +17,7 @@ services:
     image: mysql:8.0
     container_name: smart-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: smart123
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在仓库根目录 .env 中设置 MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: smart_assistant
       TZ: Asia/Shanghai
     ports:
@@ -22,7 +25,7 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-psmart123"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p\"$$MYSQL_ROOT_PASSWORD\""]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -38,7 +41,7 @@ services:
       DB_HOST: mysql
       DB_PORT: "3306"
       DB_USER: root
-      DB_PASSWORD: smart123
+      DB_PASSWORD: ${MYSQL_ROOT_PASSWORD:?请在仓库根目录 .env 中设置 MYSQL_ROOT_PASSWORD}
       DB_NAME: smart_assistant
       TZ: Asia/Shanghai
     ports:
