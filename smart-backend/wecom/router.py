@@ -1,5 +1,4 @@
 import os
-import secrets
 
 import bcrypt
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -73,12 +72,14 @@ async def wecom_login(
             message="企业微信返回数据异常：未获取到 userid",
         )
 
-    # 按 userid 查找用户，不存在则自动注册（随机密码，access=user）
+    # 按 userid 查找用户，不存在则自动注册（初始密码=用户名+123456，access=user）
     user = db.query(User).filter_by(userid=wecom_userid).first()
     if not user:
+        # 企微用户初始密码设为「用户名+123456」，使其也能通过账密面板登录
+        initial_password = f"{wecom_userid}123456"
         user = User(
             username=wecom_userid,
-            password_hash=bcrypt.hashpw(secrets.token_hex(16).encode(), bcrypt.gensalt()).decode(),
+            password_hash=bcrypt.hashpw(initial_password.encode(), bcrypt.gensalt()).decode(),
             name=wecom_userid,
             userid=wecom_userid,
             access="user",
