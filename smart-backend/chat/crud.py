@@ -4,6 +4,11 @@ from sqlalchemy.orm import Session
 
 from chat.models import ChatMessage, ChatSession
 
+# 会话列表最大返回条数（侧栏渲染上限，超出部分按更新时间截断）
+MAX_SESSION_LIST = 200
+# 组装上下文时最多回看的消息条数（防止一次拉满 MEDIUMTEXT 全表内容，todo 第 23 条）
+CONTEXT_MAX_MESSAGES = 200
+
 
 def get_session_by_chat_id(db: Session, chat_id: str) -> ChatSession | None:
     return db.query(ChatSession).filter(ChatSession.chat_id == chat_id).first()
@@ -29,6 +34,7 @@ def list_sessions_grouped(db: Session, user_id: str) -> list[dict]:
         db.query(ChatSession)
         .filter(ChatSession.user_id == user_id)
         .order_by(ChatSession.updated_at.desc())
+        .limit(MAX_SESSION_LIST)
         .all()
     )
     now = datetime.now()
@@ -136,9 +142,10 @@ def build_context(db: Session, chat_id: str, context_tokens: int, reserve_tokens
     """按上下文预算从新到旧保留消息，返回升序 [{role, content}]（不含 reasoning）。
 
     预算 = context_tokens - reserve_tokens（给输出留空间）。
+    回看条数另受 CONTEXT_MAX_MESSAGES 上限约束（todo 第 23 条）。
     """
     budget = max(context_tokens - reserve_tokens, 1024)
-    rows = get_messages(db, chat_id)
+    rows = get_messages(db, chat_id, limit=CONTEXT_MAX_MESSAGES)
     kept: list[dict] = []
     used = 0
     for row in reversed(rows):

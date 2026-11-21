@@ -53,6 +53,15 @@ ensure_column(
     "ALTER TABLE qieti_snapshots ADD COLUMN uid VARCHAR(50) NULL COMMENT '快照属主 userid（历史遗留行为 NULL）'",
 )
 
+# 模型 vs 库结构漂移自检（todo 第 10 条）：create_all 只补表不补列，漂移时打警告不阻断启动
+try:
+    from utils.schema_audit import audit_schema_drift
+
+    for _problem in audit_schema_drift(engine, Base.metadata):
+        print(f"[schema-audit] 警告：{_problem}")
+except Exception as e:  # pragma: no cover - 启动期不阻断
+    print(f"[startup] schema audit failed: {e}")
+
 # 上传文件临时目录（转换前的本地暂存）
 os.makedirs("uploads", exist_ok=True)
 

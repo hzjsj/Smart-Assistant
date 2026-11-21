@@ -19,6 +19,7 @@ from utils.upload_guard import DOCUMENTS_UPLOAD_MAX_MB, MINERU_UPLOAD_MAX_MB
 from users.models import User
 from auth import get_current_user
 from documents.knowledge import process_knowledge_zip, _convert_tiff_to_png
+from documents.mineru_pipeline import process_mineru_upload
 
 
 router = APIRouter(prefix="/api/files", tags=["wenjianguanli"])
@@ -252,7 +253,6 @@ def _process_docx_md(file_path: str, ext: str, original_name: str, base_name: st
 @router.post("/upload", operation_id="uploadFileApiFilesUploadPost")
 async def upload_file(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     ext = os.path.splitext(file.filename)[1].lower()
@@ -449,98 +449,9 @@ def get_download_url(
 MINERU_ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".md"}
 
 
-def _process_mineru_upload(file_path: str, ext: str, original_name: str,
-                           timestamp: str, uid: str | None) -> dict:
-    """上传文件到 OSS → 提交 MinerU 任务 → 保存 FileRecord。"""
-    from mineru.service import submit_task_to_mineru
-
-    db = get_sync_db()
-    try:
-        file_size = os.path.getsize(file_path)
-        saved_name = os.path.basename(file_path)
-
-        # 0. 超限（>200MB 或 >200 页）PDF：拆分后走批量上传流程，对外行为不变
-        from mineru import batch as mineru_batch
-
-        if mineru_batch.needs_split(file_path, ext):
-            parts_dir = os.path.join(os.path.dirname(file_path), f"parts_{timestamp}")
-            parts = mineru_batch.split_pdf(file_path, parts_dir)
-            batch_id, upload_urls = mineru_batch.create_batch_upload_task(
-                [os.path.basename(p) for p in parts]
-            )
-            for upload_url, part in zip(upload_urls, parts):
-                mineru_batch.upload_part(upload_url, part)
-            record = crud.create_file_record(
-                db=db,
-                original_name=original_name,
-                saved_name=saved_name,
-                file_path=file_path,
-                file_size=file_size,
-                download_url="",
-                uid=uid,
-                mineru_batch_id=batch_id,
-                mineru_state="submitted",
-            )
-            print(f"[MinerU] 超限文件已拆分为 {len(parts)} 片批量提交, batch_id={batch_id}")
-            return {
-                "status": "ok",
-                "data": {
-                    "id": record.id,
-                    "filename": original_name,
-                    "uid": uid,
-                    "mineru_batch_id": batch_id,
-                    "mineru_state": "submitted",
-                    "oss_url": None,
-                },
-            }
-
-        # 1. 上传源文件到 OSS 获取公开 URL
-        oss_key = f"mineru/{timestamp}/{saved_name}"
-        oss_result = upload_to_oss(file_path, oss_key)
-        oss_url = oss_result["url"]
-
-        # 2. 提交 MinerU 任务
-        mineru_result = submit_task_to_mineru(oss_url)
-        task_id = mineru_result["task_id"]
-
-        # 3. 保存 FileRecord
-        record = crud.create_file_record(
-            db=db,
-            original_name=original_name,
-            saved_name=saved_name,
-            file_path=file_path,
-            file_size=file_size,
-            download_url=oss_url,
-            uid=uid,
-            mineru_task_id=task_id,
-            mineru_state="submitted",
-        )
-
-        return {
-            "status": "ok",
-            "data": {
-                "id": record.id,
-                "filename": original_name,
-                "uid": uid,
-                "mineru_task_id": task_id,
-                "mineru_state": "submitted",
-                "oss_url": oss_url,
-            },
-        }
-
-    except Exception as e:
-        traceback.print_exc()
-        return {"status": "error", "data": {"filename": original_name, "download_url": None}, "errorMessage": str(e)}
-    finally:
-        db.close()
-        if os.path.exists(file_path):
-            os.remove(file_path)
-
-
 @router.post("/mineru/upload")
 async def mineru_upload_file(
     file: UploadFile = File(...),
-    db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     ext = os.path.splitext(file.filename)[1].lower()
@@ -570,5 +481,5 @@ async def mineru_upload_file(
         return {"status": "error", "data": {"filename": original_name, "download_url": None}}
 
     return await asyncio.to_thread(
-        _process_mineru_upload, file_path, ext, original_name, timestamp, uid
+        process_mineru_upload, file_path, ext, original_name, timestamp, uid
     )

@@ -22,13 +22,12 @@ import uuid
 from datetime import datetime
 
 import httpx
-import requests as _requests
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 
 from database import get_sync_db
 from documents import crud
-from documents.router import _process_mineru_upload
+from documents.mineru_pipeline import process_mineru_upload
 from mineru.service import get_mineru_config, sync_submitted_tasks
 
 router = APIRouter(prefix="/api/mineru/proxy", tags=["MinerU Open WebUI 网关"])
@@ -117,12 +116,12 @@ async def receive_upload(batch_id: str, index: int, request: Request):
 
     try:
         # 复用文档解析上传链路：小文件单任务 / 超限 PDF 平分拆分批量，自动分流
-        result = _process_mineru_upload(
+        result = process_mineru_upload(
             tmp_path, ext, original_name,
             datetime.now().strftime("%Y%m%d%H%M%S"), uid=None,
         )
     finally:
-        # _process_mineru_upload 成功路径会自行删除文件；失败兜底再清一次
+        # process_mineru_upload 成功路径会自行删除文件；失败兜底再清一次
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
@@ -208,10 +207,11 @@ async def download_zip(record_id: int):
             return RedirectResponse(record.mineru_zip_url)
         raise HTTPException(status_code=404, detail="结果尚未就绪")
 
-    resp = _requests.get(record.oss_md_url, timeout=60)
-    resp.raise_for_status()
-    resp.encoding = "utf-8"
-    md_content = resp.text
+    # httpx 异步获取（todo 第 5 条：事件循环内禁止同步 requests，单 worker 下最坏阻塞全站 60 秒）
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+        resp = await client.get(record.oss_md_url)
+        resp.raise_for_status()
+        md_content = resp.content.decode("utf-8")
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".zip", prefix="owui_zip_")
     try:

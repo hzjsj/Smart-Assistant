@@ -330,6 +330,34 @@ async def get_course_types(db: Session = Depends(get_db)):
     ]
 
 
+def _build_knowledge_tree(db: Session, course_type_code: str, root_parent_id: str, build_node) -> list:
+    """单次查询整个 course_type 的知识点后在内存组装子树（todo 第 22 条：消除每节点一次查询的 N+1）。
+
+    build_node(point) 返回不含 children 的节点 dict；has_children 的节点挂子树。
+    查询按 seq_no 排序，各父节点下的子节点保持 seq 顺序。
+    """
+    points = (
+        db.query(KnowledgePoint)
+        .filter(KnowledgePoint.course_type_code == course_type_code)
+        .order_by(KnowledgePoint.seq_no)
+        .all()
+    )
+    children_by_parent: dict[str, list] = {}
+    for point in points:
+        children_by_parent.setdefault(point.parent_id, []).append(point)
+
+    def assemble(parent_id: str) -> list:
+        result = []
+        for point in children_by_parent.get(parent_id, []):
+            node = build_node(point)
+            if point.has_children:
+                node["children"] = assemble(point.point_id)
+            result.append(node)
+        return result
+
+    return assemble(root_parent_id)
+
+
 @router.get("/knowledge-points/by-subject", operation_id="getKnowledgePointsBySubjectApiChujuanjiKnowledgePointsBySubjectGet")
 async def get_knowledge_points_by_subject(
     subject: str,
@@ -341,26 +369,15 @@ async def get_knowledge_points_by_subject(
     if not course_type_code:
         return []
 
-    def build_tree(parent_id: str) -> list:
-        points = db.query(KnowledgePoint).filter(
-            KnowledgePoint.course_type_code == course_type_code,
-            KnowledgePoint.parent_id == parent_id,
-        ).order_by(KnowledgePoint.seq_no).all()
+    def build_node(point: KnowledgePoint) -> dict:
+        return {
+            "id": point.point_id,
+            "title": point.name,
+            "value": point.point_id,
+            "key": point.point_id,
+        }
 
-        result = []
-        for p in points:
-            node = {
-                "id": p.point_id,
-                "title": p.name,
-                "value": p.point_id,
-                "key": p.point_id,
-            }
-            if p.has_children:
-                node["children"] = build_tree(p.point_id)
-            result.append(node)
-        return result
-
-    return build_tree("0")
+    return _build_knowledge_tree(db, course_type_code, "0", build_node)
 
 
 @router.get("/knowledge-points")
@@ -405,28 +422,17 @@ async def get_knowledge_tree(
     db: Session = Depends(get_db),
 ):
     """获取知识点树结构"""
-    def build_tree(parent_id: str) -> list:
-        points = db.query(KnowledgePoint).filter(
-            KnowledgePoint.course_type_code == course_type_code,
-            KnowledgePoint.parent_id == parent_id,
-        ).order_by(KnowledgePoint.seq_no).all()
+    def build_node(point: KnowledgePoint) -> dict:
+        return {
+            "id": point.point_id,
+            "name": point.name,
+            "parent_id": point.parent_id,
+            "has_children": bool(point.has_children),
+            "level": point.level,
+            "seq_no": point.seq_no,
+        }
 
-        result = []
-        for p in points:
-            node = {
-                "id": p.point_id,
-                "name": p.name,
-                "parent_id": p.parent_id,
-                "has_children": bool(p.has_children),
-                "level": p.level,
-                "seq_no": p.seq_no,
-            }
-            if p.has_children:
-                node["children"] = build_tree(p.point_id)
-            result.append(node)
-        return result
-
-    return build_tree(parent_id)
+    return _build_knowledge_tree(db, course_type_code, parent_id, build_node)
 
 
 @router.get("/knowledge-points/search")
