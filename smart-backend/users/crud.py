@@ -26,13 +26,16 @@ def get_users(
     page_size: int = 10,
     username: str | None = None,
     name: str | None = None,
+    access: str | None = None,
 ) -> dict:
-    """分页查询用户列表，支持用户名/姓名模糊过滤。返回 ProTable 约定的 {data, total, success}。"""
+    """分页查询用户列表，支持用户名/姓名模糊过滤与角色精确过滤。返回 ProTable 约定的 {data, total, success}。"""
     query = db.query(User)
     if username:
         query = query.filter(User.username.contains(username))
     if name:
         query = query.filter(User.name.contains(name))
+    if access:
+        query = query.filter(User.access == access)
     total = query.count()
     offset = (current - 1) * page_size
     items = query.order_by(User.id.asc()).offset(offset).limit(page_size).all()

@@ -23,6 +23,8 @@ export interface UserListParams {
   pageSize?: number;
   username?: string;
   name?: string;
+  /** 角色精确过滤（admin/user），后端 CRUD 按此筛选 */
+  access?: string;
 }
 
 /** 新建/更新用户的请求体（username/password 仅新建；password 更新时非空则重置） */

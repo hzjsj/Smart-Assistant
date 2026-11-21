@@ -133,10 +133,11 @@ def list_users(
     pageSize: int = Query(10, ge=1, le=100, description="每页数量"),
     username: str | None = Query(None, description="用户名模糊搜索"),
     name: str | None = Query(None, description="姓名模糊搜索"),
+    access: str | None = Query(None, description="角色精确过滤（admin/user）"),
     db: Session = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    return crud.get_users(db, current, pageSize, username, name)
+    return crud.get_users(db, current, pageSize, username, name, access)
 
 
 @router.post("/api/users", responses={401: {"model": ErrorResponse}, 403: {"model": ErrorResponse}})

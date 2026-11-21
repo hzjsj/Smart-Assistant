@@ -1,13 +1,9 @@
 import type { ActionType, ProColumns } from '@ant-design/pro-components';
 import { PageContainer, ProTable } from '@ant-design/pro-components';
 import { useMutation } from '@tanstack/react-query';
-import { Button, Popconfirm, Tag, message } from 'antd';
+import { Button, message, Popconfirm, Tag } from 'antd';
 import { useRef, useState } from 'react';
-import {
-  type UserItem,
-  deleteUsers,
-  listUsers,
-} from '@/services/user';
+import { deleteUsers, listUsers, type UserItem } from '@/services/user';
 import CreateForm from './components/CreateForm';
 import LoginLinkModal from './components/LoginLinkModal';
 import UpdateForm from './components/UpdateForm';
@@ -109,7 +105,11 @@ const UserList: React.FC = () => {
           key="edit"
           values={record}
           onOk={reload}
-          trigger={<Button type="link" size="small">编辑</Button>}
+          trigger={
+            <Button type="link" size="small">
+              编辑
+            </Button>
+          }
         />,
         <LoginLinkModal key="login-link" values={record} />,
         <Popconfirm
@@ -133,13 +133,11 @@ const UserList: React.FC = () => {
         actionRef={actionRef}
         rowKey="id"
         search={{ labelWidth: 'auto' }}
-        toolBarRender={() => [
-          <CreateForm key="create" reload={reload} />,
-        ]}
+        toolBarRender={() => [<CreateForm key="create" reload={reload} />]}
         request={async (params) => {
           // ProTable 的 params 自带 current/pageSize，其余为搜索字段
-          const { current, pageSize, username, name } = params;
-          return listUsers({ current, pageSize, username, name });
+          const { current, pageSize, username, name, access } = params;
+          return listUsers({ current, pageSize, username, name, access });
         }}
         columns={columns}
         rowSelection={{
