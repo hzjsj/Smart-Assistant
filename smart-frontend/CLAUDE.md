@@ -2,41 +2,42 @@
 
 ## Project
 
-Ant Design Pro — React enterprise boilerplate on Umi Max v4, antd v6, ProComponents v3.
+Smart Assistant 前端 — 基于 Ant Design Pro 脚手架（Umi Max v4, antd v6, ProComponents v3, React 19）。
 
 ## Commands
 
-`npm start` (dev+mock), `npm run dev` (no mock), `npm run build` (utoopack), `npm run lint` (Biome+tsc), `npm run test` (Jest), `npx antd lint ./src` (antd-specific checks).
+`npm run dev` (MOCK=none 开发), `npm run build` (utoopack), `npm run lint` (Biome+tsc), `npm run test` (Vitest), `npx antd lint ./src` (antd-specific checks).
 
-Other: `npm run openapi` (regenerate `src/services/`), `npm run simple` (**irreversible** — commit first), `npm run biome` (auto-fix), `npm run tsc` (type-check only).
+Other: `npm run openapi` (regenerate `src/services/fast-api-manage/`), `npm run simple` (**irreversible** — commit first), `npm run biome` (auto-fix), `npm run tsc` (type-check only).
 
 ## Critical Rules
 
-- **Never edit `src/services/ant-design-pro/`** — auto-generated, regenerate with `npm run openapi`
+- **`src/services/fast-api-manage/` 是 OpenAPI 生成代码** — 用 `npm run openapi` 重新生成，勿手改；`src/services/ant-design-pro/` 为**手工维护**（生成配置已注释）
 - **Biome only** — no ESLint, no Prettier. Both `npm run lint` and `npx antd lint ./src` must pass before commit
 - **Always `npx antd info <Component>` before writing antd code** — don't guess APIs from memory
 - **`npm run simple` is irreversible** — always commit/branch first
 - **Conventional commits** required (commitlint enforced)
 - **TypeScript strict** · **Node ≥ 22** · **`package-lock.json`** (not yarn/pnpm)
 - **`.umi` dir is auto-generated** — delete `src/.umi` and restart if dev server acts up
+- **SSE 流式请求** 一律用 `@/utils/apiBase` 的 `API_BASE` 派生端点，禁止硬编码 `http://localhost:5000`
 
 ## Architecture Essentials
 
-**Config**: `config/config.ts` (defineConfig), `config/routes.ts` (declarative routes). Route `name` → `menu.xxx` i18n key; `access` field gates visibility.
+**Config**: `config/config.ts` (defineConfig), `config/routes.ts` (declarative routes). Route `name` 直接显示为菜单文案（i18n 已移除）；`access` field gates visibility.
 
 **Convention files** (`src/`): `app.tsx` (runtime config + `getInitialState`), `access.ts` (permissions), `global.tsx` (side effects), `loading.tsx`, `typings.d.ts`.
 
 **Auth**: `getInitialState()` → `GET /api/currentUser`; 401 → redirect login. `access.ts`: `canAdmin = currentUser.access === 'admin'`. Mock creds: `admin`/`ant.design` or `user`/`ant.design`.
 
-**State**: `useModel('filename')` for global hooks (`src/models/`). `useModel('@@initialState')` for currentUser/settings. ProTable `request` prop for most data loading. `@tanstack/react-query` for complex server state.
+**State**: `useModel('@@initialState')` for currentUser/settings. react-query（umi 插件注入 Provider）用于 mineru/shuban/qieti 服务端状态；ProTable `request` prop for most data loading.
+
+**聊天共享件**: `@/components/chat-kit`（createChatProvider 工厂、MODEL_ABBR、ChatKitThink）——chat/chatbot/copilot 三页共用，新聊天页面勿复制这些实现。
 
 **Styling priority**: Tailwind CSS v4 (layout) → antd-style v4 / `createStyles` (theme tokens) → CSS Modules → Less (legacy only).
 
 **Request**: built-in `request` from `@umijs/max`, configured in `src/requestErrorConfig.ts`. Per-page `service.ts` for non-generated APIs.
 
-**i18n**: 8 locales in `src/locales/`. `useIntl().formatMessage({ id, defaultMessage })`.
-
-**Mock**: `mock/` (global) + `src/pages/**/_mock.ts` (co-located). Express-style handlers.
+**Mock**: `mock/` (global) + `src/pages/**/_mock.ts` (co-located). Express-style handlers（dev 固定 MOCK=none，基本不用）.
 
 **Cloudflare Worker**: `cloudflare-worker/` — separate Hono app, own `package.json`, not an npm workspace.
 

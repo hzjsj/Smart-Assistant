@@ -35,12 +35,12 @@
     "rules": {
       "preset": "recommended",
       "suspicious": {
-        "noExplicitAny": "off",
+        "noExplicitAny": "warn",
         "noUnknownAtRules": "off"
       },
       "correctness": {
         "useUniqueElementIds": "off",
-        "useExhaustiveDependencies": "off"
+        "useExhaustiveDependencies": "warn"
       },
       "a11y": {
         "noStaticElementInteractions": "off",

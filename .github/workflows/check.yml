@@ -1,0 +1,75 @@
+# 全量检查：后端 unittest + 前端 lint/tsc/vitest（todo 第 25 条）
+# 仓库托管在 Gitee：如需在 Gitee 侧跑 CI，可按本文件语义迁移为 Gitee Go
+# .workflow/ 流水线；本地等价命令见 scripts/check.sh
+name: check
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: smart_assistant
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_PASSWORD: root
+      DB_NAME: smart_assistant
+    defaults:
+      run:
+        working-directory: smart-backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: pip
+      - name: 安装后端依赖
+        run: pip install -r requirements.txt
+      - name: 运行后端测试（8 个模块 / 105 用例）
+        run: >
+          python -m unittest
+          bailian.tests.test_agent_adapter
+          openclaw.tests.test_openclaw_payload
+          hermes.tests.test_chat_requests
+          hermes.tests.test_workspace
+          dify.tests.test_chat_adapter
+          langchain_agent.tests.test_agent_adapter
+          conversations.tests.test_recording
+          shuban.tests.test_storage
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: smart-frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: smart-frontend/package-lock.json
+      - name: 安装前端依赖
+        run: npm ci
+      - name: Biome lint（warn 级问题不阻断）
+        run: npx biome lint src/
+      - name: TypeScript 类型检查
+        run: npx tsc --noEmit
+      - name: Vitest 单测
+        run: npx vitest run
