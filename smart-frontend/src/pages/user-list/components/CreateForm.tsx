@@ -1,13 +1,13 @@
 import { PlusOutlined } from '@ant-design/icons';
 import {
-  ModalForm,
+  DrawerForm,
   ProFormRadio,
   ProFormText,
 } from '@ant-design/pro-components';
 import { useMutation } from '@tanstack/react-query';
 import { Button, message } from 'antd';
 import type { FC } from 'react';
-import { type UserWriteParams, createUser } from '@/services/user';
+import { createUser, type UserWriteParams } from '@/services/user';
 
 interface CreateFormProps {
   reload?: () => void;
@@ -36,15 +36,16 @@ const CreateForm: FC<CreateFormProps> = (props) => {
   return (
     <>
       {contextHolder}
-      <ModalForm<UserWriteParams>
+      <DrawerForm<UserWriteParams>
         title="新建用户"
         trigger={
           <Button type="primary" icon={<PlusOutlined />}>
             新建
           </Button>
         }
-        width="480px"
-        modalProps={{ okButtonProps: { loading } }}
+        width={480}
+        resize={{ minWidth: 360, maxWidth: 720 }}
+        submitter={{ submitButtonProps: { loading } }}
         onFinish={async (value) => {
           await run(value);
           return true;
@@ -53,16 +54,14 @@ const CreateForm: FC<CreateFormProps> = (props) => {
         <ProFormText
           name="username"
           label="用户名"
-          width="md"
           rules={[{ required: true, message: '用户名为必填项' }]}
         />
         <ProFormText.Password
           name="password"
           label="初始密码"
-          width="md"
           rules={[{ required: true, message: '初始密码为必填项' }]}
         />
-        <ProFormText name="name" label="姓名" width="md" placeholder="缺省时使用用户名" />
+        <ProFormText name="name" label="姓名" placeholder="缺省时使用用户名" />
         <ProFormRadio.Group
           name="access"
           label="角色"
@@ -72,7 +71,7 @@ const CreateForm: FC<CreateFormProps> = (props) => {
             { value: 'admin', label: '管理员' },
           ]}
         />
-      </ModalForm>
+      </DrawerForm>
     </>
   );
 };
