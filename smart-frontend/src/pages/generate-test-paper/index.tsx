@@ -17,8 +17,8 @@ import {
   Flex,
   Form,
   Input,
-  message,
   Modal,
+  message,
   Select,
   Slider,
   Space,
@@ -28,7 +28,13 @@ import {
   Typography,
 } from 'antd';
 import { createStyles } from 'antd-style';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { BlockMath, InlineMath } from 'react-katex';
 import 'katex/dist/katex.min.css';
 
@@ -78,6 +84,7 @@ const renderThinkingText = (text: string) => {
 
   return nodes;
 };
+
 import {
   DEFAULT_QUESTION_TYPES,
   EXAM_TYPES,
@@ -703,10 +710,22 @@ const ChuJuanJiPage: React.FC = () => {
 
   const selectedCount = questions.length > 0 ? selectedIds.size : 0;
 
+  // 在途生成流的中止控制器（组件卸载 / 重新生成时中止，todo 第 28 条）
+  const generateAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => generateAbortRef.current?.abort(), []);
+
   // 公共：执行流式生成（初始生成 / 重新生成共用）
   const runGenerate = useCallback(
-    (extra: { existingQuestions?: QuestionItem[]; optimizationSuggestion?: string }) => {
+    (extra: {
+      existingQuestions?: QuestionItem[];
+      optimizationSuggestion?: string;
+    }) => {
       if (generating) return;
+
+      // 中止上一轮在途流，避免旧流回调污染新一轮状态
+      generateAbortRef.current?.abort();
+      const controller = new AbortController();
+      generateAbortRef.current = controller;
 
       setGenerating(true);
       setQuestions([]);
@@ -774,6 +793,7 @@ const ChuJuanJiPage: React.FC = () => {
         (reasoning: string) => {
           setThinkingText((prev) => prev + reasoning);
         },
+        controller.signal,
       );
     },
     [
@@ -1093,7 +1113,9 @@ const ChuJuanJiPage: React.FC = () => {
                   items={[
                     {
                       key: 'think',
-                      label: generating ? '🤔 深度思考中...' : '💡 深度思考过程',
+                      label: generating
+                        ? '🤔 深度思考中...'
+                        : '💡 深度思考过程',
                       children: (
                         <div
                           style={{

@@ -14,11 +14,10 @@ import {
   Conversations,
   Prompts,
   Sender,
-  Think,
   Welcome,
 } from '@ant-design/x';
 import type { BubbleListRef } from '@ant-design/x/es/bubble';
-import XMarkdown, { type ComponentProps } from '@ant-design/x-markdown';
+import XMarkdown from '@ant-design/x-markdown';
 import Latex from '@ant-design/x-markdown/plugins/Latex';
 import type {
   DefaultMessageInfo,
@@ -56,6 +55,13 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import {
+  CHAT_COMPLETIONS_URL,
+  formatContext,
+  modelAbbr,
+  newChatId,
+  ChatKitThink as ThinkComponent,
+} from '@/components/chat-kit';
 import LottieThinkingIcon from '@/components/LottieThinkingIcon';
 import { getChatErrorMessage, getResponseError } from '@/pages/hermes/service';
 import {
@@ -71,11 +77,7 @@ import { downloadAnswerAsDocx } from '@/utils/answerToDocx';
 const STREAMING_ACTIVE = { hasNextChunk: true, enableAnimation: true };
 const STREAMING_IDLE = { hasNextChunk: false, enableAnimation: true };
 
-/** 会话ID 用 UUID（后端 chat_id 唯一索引，'default' 这类固定值会跨用户冲突） */
-const newChatId = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `chat-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+// 会话ID/模型注册工具收敛到 chat-kit；本页 SwitchTextStyle 样式与 chat/chatbot 不同，保留页内实现
 
 const newDraftConversation = () => ({
   key: newChatId(),
@@ -83,24 +85,6 @@ const newDraftConversation = () => ({
   group: '今天',
   isDraft: true,
 });
-
-const formatContext = (tokens: number) =>
-  tokens >= 1024 ? `${Math.round(tokens / 1024)}K` : `${tokens}`;
-
-/** 模型名缩写（模型选择按钮上显示，与 chat 页保持一致） */
-const MODEL_ABBR: Record<string, string> = {
-  'deepseek-v4-flash': 'DS-Flash',
-  'deepseek-v4-pro': 'DS-Pro',
-  'deepseek-v4-flash-vision-exp': 'DS-Vision',
-  'qwen3.7-plus': 'Qwen-Plus',
-  'qwen3.8-flash': 'Qwen-Flash',
-  'qwen3.8-max': 'Qwen-Max',
-  'doubao-seed-2-1-pro-260628': 'Doubao-Pro',
-  'doubao-seed-2-1-turbo-260628': 'Doubao-Turbo',
-  'doubao-seed-evolving': 'Doubao-Evo',
-};
-
-const modelAbbr = (name: string) => MODEL_ABBR[name] ?? name;
 
 const SwitchTextStyle: React.CSSProperties = {
   fontSize: 11,
@@ -187,32 +171,9 @@ const useCopilotStyle = createStyles(({ token, css }) => {
   };
 });
 
-const ThinkComponent = React.memo((props: ComponentProps) => {
-  const [title, setTitle] = React.useState('深度思考中...');
-  const [loading, setLoading] = React.useState(true);
+// 深度思考面板使用 chat-kit 的 ChatKitThink（本页以 ThinkComponent 别名引用）
 
-  React.useEffect(() => {
-    if (props.streamStatus === 'done') {
-      setTitle('思考完成');
-      setLoading(false);
-    }
-  }, [props.streamStatus]);
-
-  return (
-    <Think title={title} loading={loading}>
-      {props.children}
-    </Think>
-  );
-});
-
-// SSE 直连后端完整路径（不走 proxy，避免 HPM 缓冲）。
-// 开发环境按当前访问主机推导（localhost 与局域网 IP 手机真机均可直连 5000）；
-// 生产构建取空串走同源（nginx 反代），换环境无需改代码（与 hermes 页惯例一致）。
-const SSE_API_BASE =
-  process.env.NODE_ENV === 'development'
-    ? `${window.location.protocol}//${window.location.hostname}:5000`
-    : '';
-const CHAT_COMPLETIONS_URL = `${SSE_API_BASE}/api/chat/completions`;
+// SSE 端点常量收敛到 chat-kit（开发按主机直连 5000 / 生产同源，见 utils/apiBase）
 
 const Footer: React.FC<{
   id?: string;
@@ -220,10 +181,11 @@ const Footer: React.FC<{
   status?: string;
   docName: string;
 }> = ({ id, content, status, docName }) => {
-  const resultContent = content
-    .split(/<\/think>/i)
-    .pop()!
-    .trim();
+  const resultContent =
+    content
+      .split(/<\/think>/i)
+      .pop()
+      ?.trim() ?? '';
   const Items = [
     {
       key: 'copy',
@@ -263,7 +225,7 @@ interface CopilotProps {
 }
 
 const Copilot = (props: CopilotProps) => {
-  const { copilotOpen, setCopilotOpen, mdUrl, docName, docLoading } = props;
+  const { setCopilotOpen, mdUrl, docName, docLoading } = props;
   const { styles } = useCopilotStyle();
   const docReady = Boolean(mdUrl);
 
@@ -493,7 +455,11 @@ const Copilot = (props: CopilotProps) => {
               items={(conversations ?? []) as any}
               activeKey={activeConversationKey}
               groupable
-              onActiveChange={setActiveConversationKey}
+              onActiveChange={(key) => {
+                // 切换会话时中止在途流式（后端权威落库继续完成消息，前端停止接收）
+                if (key !== activeConversationKey && isRequesting) abort();
+                setActiveConversationKey(key);
+              }}
               styles={{ item: { padding: '0 8px' } }}
               className={styles.conversations}
               menu={(conversation) => ({
@@ -504,7 +470,9 @@ const Copilot = (props: CopilotProps) => {
                     danger: true,
                     onClick: () => {
                       // 后端级联删除消息；draft 会话无记录，接口 404 静默
-                      deleteChatSession(conversation.key).catch(() => {});
+                      deleteChatSession(conversation.key).catch(() =>
+                        message.error('删除会话失败，请重试'),
+                      );
                       const remaining = conversations.filter(
                         (c) => c.key !== conversation.key,
                       );
@@ -728,7 +696,7 @@ const Copilot = (props: CopilotProps) => {
   );
 };
 
-const useWorkareaStyle = createStyles(({ token, css }) => {
+const useWorkareaStyle = createStyles(({ css }) => {
   return {
     headerButton: css`
       background-image: linear-gradient(78deg, #8054f2 7%, #3895da 95%);

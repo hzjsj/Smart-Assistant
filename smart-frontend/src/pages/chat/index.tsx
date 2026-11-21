@@ -14,11 +14,9 @@ import {
   Conversations,
   Prompts,
   Sender,
-  Think,
   Welcome,
   XProvider,
 } from '@ant-design/x';
-import type { ComponentProps } from '@ant-design/x-markdown';
 import XMarkdown from '@ant-design/x-markdown';
 import type { DefaultMessageInfo } from '@ant-design/x-sdk';
 import { useXChat } from '@ant-design/x-sdk';
@@ -40,6 +38,14 @@ import {
   ConversationSkeleton,
   MessageSkeleton,
 } from '@/components/ChatSkeleton';
+import {
+  createChatProvider,
+  formatContext,
+  modelAbbr,
+  newChatId,
+  SwitchTextStyle,
+  ChatKitThink as ThinkComponent,
+} from '@/components/chat-kit';
 import LottieThinkingIcon from '@/components/LottieThinkingIcon';
 import { useDelayedLoading } from '@/hooks/useDelayedLoading';
 import {
@@ -54,7 +60,6 @@ import {
 import { downloadAnswerAsDocx } from '@/utils/answerToDocx';
 import '@ant-design/x-markdown/themes/light.css';
 import '@ant-design/x-markdown/themes/dark.css';
-import { createChatProvider } from './service';
 import { useStyles } from './style';
 import { useMarkdownTheme } from './utils';
 
@@ -129,28 +134,7 @@ const ChatContext = React.createContext<{
 }>({});
 
 // ==================== 子组件 ====================
-/** 深度思考面板：流式「深度思考中...」→ 完成「思考完成」 */
-const ThinkComponent = React.memo((props: ComponentProps) => {
-  const [title, setTitle] = React.useState('深度思考中...');
-  const [loading, setLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    if (props.streamStatus === 'done') {
-      setTitle('思考完成');
-      setLoading(false);
-    }
-  }, [props.streamStatus]);
-
-  return (
-    <Think
-      title={title}
-      loading={loading}
-      defaultExpanded={props.streamStatus !== 'done'}
-    >
-      {props.children}
-    </Think>
-  );
-});
+// 深度思考面板使用 chat-kit 的 ChatKitThink（本页以 ThinkComponent 别名引用）
 
 /** AI 气泡操作栏：重新生成 / 复制 / 下载 Word / 反馈 */
 const Footer: React.FC<{
@@ -229,36 +213,8 @@ const Footer: React.FC<{
   ) : null;
 };
 
-const formatContext = (tokens: number) =>
-  tokens >= 1024 ? `${Math.round(tokens / 1024)}K` : `${tokens}`;
-
-/** 模型名缩写（模型选择按钮上显示） */
-const MODEL_ABBR: Record<string, string> = {
-  'deepseek-v4-flash': 'DS-Flash',
-  'deepseek-v4-pro': 'DS-Pro',
-  'deepseek-v4-flash-vision-exp': 'DS-Vision',
-  'qwen3.7-plus': 'Qwen-Plus',
-  'qwen3.8-flash': 'Qwen-Flash',
-  'qwen3.8-max': 'Qwen-Max',
-  'doubao-seed-2-1-pro-260628': 'Doubao-Pro',
-  'doubao-seed-2-1-turbo-260628': 'Doubao-Turbo',
-  'doubao-seed-evolving': 'Doubao-Evo',
-};
-
-const modelAbbr = (name: string) => MODEL_ABBR[name] ?? name;
-
-/** 深度思考开关文字样式（on/off 居中窄列） */
-const SwitchTextStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  width: 24,
-  justifyContent: 'center',
-  alignItems: 'center',
-};
-
-const newChatId = () =>
-  typeof crypto !== 'undefined' && crypto.randomUUID
-    ? crypto.randomUUID()
-    : `chat-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+// 模型注册工具（formatContext/modelAbbr/newChatId/SwitchTextStyle）与深度思考面板
+// 已收敛到 @/components/chat-kit（todo 第 29 条三页去重）
 
 // ==================== 主页面 ====================
 const ChatPage: React.FC = () => {
@@ -362,7 +318,12 @@ const ChatPage: React.FC = () => {
       const res = await listChatSessions();
       if (res?.success) {
         const list = (res.data ?? []) as ChatConversationItem[];
-        setConversations(list);
+        // 本地草稿置顶保留：未发出首条消息的会话不落库，直接整表覆盖会把它抹掉
+        // （todo 第 28 条草稿竞态，与 chatbot 页同构）
+        setConversations((prev) => {
+          const drafts = prev.filter((c) => c.isDraft);
+          return [...drafts, ...list];
+        });
         // 仅在完全无激活会话时兜底（首载空列表场景）
         if (!activeKeyRef.current) {
           if (list.length > 0) {
@@ -658,7 +619,11 @@ const ChatPage: React.FC = () => {
           items={conversations as any}
           className={styles.conversations}
           activeKey={activeConversationKey}
-          onActiveChange={setActiveConversationKey}
+          onActiveChange={(key) => {
+            // 切换会话时中止在途流式（后端权威落库继续完成消息，前端停止接收）
+            if (key !== activeConversationKey && isRequesting) abort();
+            setActiveConversationKey(key);
+          }}
           styles={{ item: { padding: '0 8px' } }}
           menu={(conversation) => ({
             items: [

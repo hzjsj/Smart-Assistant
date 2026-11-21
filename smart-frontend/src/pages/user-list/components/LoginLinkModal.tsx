@@ -1,7 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
-import { Alert, Button, Input, Modal, Space, message } from 'antd';
-import { useState, type FC } from 'react';
-import { type UserItem, createLoginTicket } from '@/services/user';
+import { Alert, Button, Input, Modal, message, Space } from 'antd';
+import { type FC, useState } from 'react';
+import { createLoginTicket, type UserItem } from '@/services/user';
 
 interface LoginLinkModalProps {
   /** 行记录，为其签发登录链接 */
@@ -74,7 +74,11 @@ const LoginLinkModal: FC<LoginLinkModalProps> = ({ values }) => {
           style={{ marginBottom: 16 }}
         />
         <Space.Compact style={{ width: '100%' }}>
-          <Input readOnly value={link} placeholder={loading ? '正在生成…' : ''} />
+          <Input
+            readOnly
+            value={link}
+            placeholder={loading ? '正在生成…' : ''}
+          />
           <Button type="primary" disabled={!link} onClick={copyLink}>
             复制
           </Button>

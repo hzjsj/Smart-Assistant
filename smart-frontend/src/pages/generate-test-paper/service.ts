@@ -28,6 +28,7 @@ export function buildUserPrompt(req: GenerateRequest): string {
 /**
  * 流式生成试卷题目
  * @param onReasoning 深度思考增量回调（可选，开启深度思考时收到 reasoning 事件）
+ * @param signal 中断信号（组件卸载/重新生成时中止在途流，todo 第 28 条）
  */
 export async function generateQuestionsStream(
   req: GenerateRequest,
@@ -35,6 +36,7 @@ export async function generateQuestionsStream(
   onDone: (questions: QuestionItem[]) => void,
   onError: (error: string) => void,
   onReasoning?: (reasoning: string) => void,
+  signal?: AbortSignal,
 ) {
   try {
     const userPrompt = buildUserPrompt(req);
@@ -45,6 +47,7 @@ export async function generateQuestionsStream(
       headers: {
         'Content-Type': 'application/json',
       },
+      signal,
       body: JSON.stringify({
         user_prompt: userPrompt,
         // 重新生成：已有题目 + 优化建议（有值才带）
@@ -149,6 +152,8 @@ export async function generateQuestionsStream(
 
     onError('生成完成但未获取到有效内容');
   } catch (error) {
+    // 主动中止（卸载/重新生成）不算失败，静默返回
+    if (error instanceof DOMException && error.name === 'AbortError') return;
     onError(error instanceof Error ? error.message : '生成失败');
   }
 }
